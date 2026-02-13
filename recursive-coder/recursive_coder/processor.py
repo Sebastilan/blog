@@ -49,6 +49,10 @@ class RecursiveProcessor:
         self.backtrack_count = 0
         self.total_api_calls = 0
 
+        # Concurrency control — limit parallel task execution
+        max_parallel = config.get("max_parallel_tasks", 3)
+        self._semaphore = asyncio.Semaphore(max_parallel)
+
         # Build agent loop and tool executor
         self.tool_executor = ToolExecutor(executor)
         self.agent_loop = AgentLoop(
@@ -231,7 +235,11 @@ class RecursiveProcessor:
     # ── Gap 8: Parallel child processing ──
 
     async def _process_children(self, task: TaskNode) -> None:
-        """Process children respecting dependencies. Independent tasks run in parallel."""
+        """Process children respecting dependencies.
+
+        Independent tasks run in parallel, but bounded by max_parallel_tasks semaphore
+        to avoid overwhelming API rate limits, memory, and shell resources.
+        """
         remaining = set(task.children)
 
         while remaining:
@@ -254,26 +262,31 @@ class RecursiveProcessor:
                 break
 
             if len(ready) == 1:
-                # Single task — run directly
+                # Single task — run directly (still acquire semaphore for consistency)
                 child = self.tree.get_node(ready[0])
                 remaining.discard(ready[0])
-                await self.process(child)
+                async with self._semaphore:
+                    await self.process(child)
                 if child.status == TaskStatus.FAILED:
                     await self._backtrack(task)
                     return
             else:
-                # Multiple independent tasks — run in parallel
+                # Multiple independent tasks — run in parallel, bounded by semaphore
                 logger.info(
-                    "[PARALLEL] task=%s running %d children concurrently: %s",
-                    task.id, len(ready), ready,
+                    "[PARALLEL] task=%s ready=%d semaphore_limit=%d children: %s",
+                    task.id, len(ready), self._semaphore._value, ready,
                 )
-                tasks_to_run = []
-                for cid in ready:
-                    child = self.tree.get_node(cid)
-                    remaining.discard(cid)
-                    tasks_to_run.append(self.process(child))
 
-                await asyncio.gather(*tasks_to_run)
+                async def _run_with_limit(child_id: str) -> None:
+                    child = self.tree.get_node(child_id)
+                    if child:
+                        async with self._semaphore:
+                            await self.process(child)
+
+                for cid in ready:
+                    remaining.discard(cid)
+
+                await asyncio.gather(*[_run_with_limit(cid) for cid in ready])
 
                 # Check if any failed
                 for cid in ready:
