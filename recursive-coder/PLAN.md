@@ -1,586 +1,823 @@
-# 递归任务分解 AI 编码框架 — 实施计划
+# 递归任务分解 AI 编码框架 — 实施计划 v2
 
-## 〇、当前状态
+> **与 v1 的核心差异：**
+> 1. 执行模式从"只写代码"改为 **Agent 模式**——模型可以自由调用终端工具
+> 2. 新增 **迭代优化闭环**——评估报告自动驱动 prompt/参数调整
 
-已完成的代码（需要修改/完善）：
+---
 
-| 文件 | 状态 | 说明 |
-|------|------|------|
-| `recursive_coder/models.py` | 基本完成 | TaskNode / TaskTree 数据结构，需增加评估相关字段 |
-| `recursive_coder/api_caller.py` | 基本完成 | 多模型 API 调用，需增加每次调用的详细日志记录 |
-| `recursive_coder/__init__.py` | 完成 | 版本号 |
+## 一、架构总览
 
-## 一、项目文件结构（最终目标）
+### 1.1 两层循环
+
+```
+外层循环（迭代优化）
+┌─────────────────────────────────────────────────────┐
+│                                                     │
+│   Run N                                             │
+│   ┌───────────────────────────────────────┐         │
+│   │  内层循环（任务递归）                     │         │
+│   │                                       │         │
+│   │  用户任务 → 拆分 → 执行(Agent) → 验证   │         │
+│   │       ↑                    ↓          │         │
+│   │       └──── 回溯 ←── 失败 ──┘          │         │
+│   └───────────────────────────────────────┘         │
+│                     │                               │
+│                     ▼                               │
+│              evaluation_report.json                  │
+│                     │                               │
+│                     ▼                               │
+│              optimizer.py（分析报告，生成调整建议）       │
+│                     │                               │
+│                     ▼                               │
+│              更新 prompt_templates / config           │
+│                     │                               │
+│                     ▼                               │
+│   Run N+1 （使用优化后的配置）                         │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+```
+
+### 1.2 Agent 模式 vs 旧方案对比
+
+| 维度 | v1（只写代码） | v2（Agent 模式） |
+|------|--------------|----------------|
+| 执行方式 | 模型一次性输出完整代码 | 模型在多轮 tool-use 循环中逐步操作 |
+| 终端交互 | 仅系统运行验证命令 | 模型可请求执行任意 shell 命令 |
+| 文件操作 | 模型输出代码，系统写入 | 模型可主动读/写/查看文件 |
+| 环境感知 | 无 | 模型可 `ls`、`cat`、`pip list` 等探索环境 |
+| 调试能力 | 仅看到验证失败的 stderr | 模型可自主运行调试命令、检查中间输出 |
+| 上下文 | 单次调用 | 单任务内多轮对话，但任务间独立 |
+
+### 1.3 项目文件结构
 
 ```
 recursive-coder/
-├── pyproject.toml                    # 项目依赖和元数据
-├── config.yaml                       # 默认配置（模型选择、重试次数、深度上限等）
-├── PLAN.md                           # 本计划文件
+├── pyproject.toml
+├── config.yaml                        # 运行配置
+├── PLAN.md
 │
 ├── recursive_coder/
 │   ├── __init__.py
-│   ├── models.py                     # 核心数据结构（TaskNode, TaskTree, Verification）
-│   ├── api_caller.py                 # LLM API 统一调用层
-│   ├── prompt_builder.py             # Prompt 构造器（判断/拆分/执行/修复/回溯）
-│   ├── executor.py                   # Shell 执行器（编译、运行验证命令）
-│   ├── processor.py                  # 核心递归处理器（process/execute/backtrack）
-│   ├── response_parser.py            # 模型返回内容的结构化解析
-│   ├── persistence.py                # 任务树状态持久化（JSON 文件）
-│   ├── evaluator.py                  # ★ 评估器：收集指标、生成评估报告
-│   ├── logger_setup.py               # ★ 日志系统配置（结构化日志）
-│   └── cli.py                        # CLI 入口
+│   ├── models.py                      # 数据结构（TaskNode, TaskTree, ToolCall, AgentStep）
+│   ├── api_caller.py                  # LLM API 统一调用层（支持 tool_use 格式）
+│   ├── tools.py                       # ★ Tool 定义与执行（shell, read_file, write_file, list_dir）
+│   ├── agent_loop.py                  # ★ Agent 多轮循环（调 API → 解析 tool_call → 执行 → 回传结果）
+│   ├── prompt_builder.py              # Prompt 构造（judge/execute/fix/backtrack/integrate）
+│   ├── response_parser.py             # 解析判断/拆分阶段的结构化返回
+│   ├── processor.py                   # 核心递归处理器（process/execute/backtrack）
+│   ├── executor.py                    # Shell 安全执行层（超时、输出截断、命令过滤）
+│   ├── persistence.py                 # 任务树 + API 调用记录持久化
+│   ├── evaluator.py                   # ★ 评估器：收集指标、生成评估报告
+│   ├── optimizer.py                   # ★★ 迭代优化器：分析报告 → 生成调整建议 → 更新配置
+│   ├── logger_setup.py                # 结构化日志
+│   ├── cli.py                         # CLI 入口
+│   └── __main__.py                    # python -m recursive_coder
 │
-├── workspace/                        # 运行时生成的工作区（gitignore）
-│   └── <task_id>/                    # 每次运行的独立工作区
-│       ├── task_tree.json            # 任务树快照
-│       ├── run.log                   # 运行日志
-│       ├── evaluation_report.json    # ★ 评估报告
-│       ├── api_calls/                # ★ 每次 API 调用的完整记录
-│       │   ├── call_001.json         #   (prompt, response, tokens, 耗时)
-│       │   ├── call_002.json
-│       │   └── ...
-│       └── output/                   # 生成的代码产物
-│           └── ...
+├── prompt_templates/                   # ★ Prompt 模板（独立文件，方便迭代修改）
+│   ├── system.txt                     # 系统模板
+│   ├── judge.txt                      # 判断/拆分 prompt
+│   ├── execute.txt                    # 执行 prompt（Agent 模式指令）
+│   ├── fix.txt                        # 修复 prompt
+│   ├── backtrack.txt                  # 回溯 prompt
+│   └── integrate.txt                  # 集成验证 prompt
 │
-└── tests/                            # 框架自身的测试
+├── optimization_history/               # ★ 优化历史记录
+│   ├── iteration_001.json             # 第一轮优化记录
+│   ├── iteration_002.json
+│   └── ...
+│
+├── workspace/                          # 运行时工作区
+│   └── <run_id>/
+│       ├── task_tree.json
+│       ├── run.log
+│       ├── evaluation_report.json
+│       ├── api_calls/
+│       │   └── call_XXX.json
+│       └── output/                    # 生成的代码产物
+│
+└── tests/
     ├── test_models.py
-    ├── test_prompt_builder.py
+    ├── test_tools.py
+    ├── test_agent_loop.py
     ├── test_response_parser.py
     └── test_executor.py
 ```
 
-## 二、实施步骤（按顺序）
+---
 
-### Step 1：完善 models.py — 增加评估字段
+## 二、Agent 模式详细设计
 
-在 TaskNode 中增加以下字段，用于事后评估：
+### 2.1 Tool 定义
 
-```python
-# 新增字段
-start_time: Optional[float] = None      # 任务开始时间
-end_time: Optional[float] = None        # 任务完成时间
-api_call_ids: list[str] = []            # 关联的 API 调用 ID 列表
-token_usage: dict = {"input": 0, "output": 0}  # 该任务累计 token
-decomposition_reason: str = ""           # 为什么拆分（模型原话摘要）
-verification_result: str = ""            # 验证的 stdout/stderr
+模型可使用的工具集：
+
+| Tool 名称 | 参数 | 说明 | 安全级别 |
+|-----------|------|------|---------|
+| `shell` | `command: str` | 执行 shell 命令 | 需过滤 |
+| `write_file` | `path: str, content: str` | 写文件 | 限制在工作区 |
+| `read_file` | `path: str` | 读文件 | 限制在工作区 |
+| `list_dir` | `path: str` | 列出目录内容 | 限制在工作区 |
+| `task_done` | `success: bool, summary: str` | 声明任务完成 | 无限制 |
+
+**shell 命令安全过滤规则：**
+
+```
+允许（白名单模式）:
+  - 编译: gcc, g++, make, cmake
+  - Python: python, pip install, pytest
+  - 文件查看: cat, head, tail, wc, diff
+  - 搜索: grep, find, ls
+  - 其他: cd, echo, mkdir, cp, mv
+
+禁止（黑名单）:
+  - 危险操作: rm -rf, sudo, chmod 777
+  - 网络请求: curl, wget, nc, ssh（防止数据泄露）
+  - 系统修改: systemctl, kill, reboot
+
+可配置:
+  - 用户可在 config.yaml 中自定义白名单/黑名单
+  - 默认 "严格模式"（白名单），可切换为 "宽松模式"（仅黑名单）
 ```
 
-### Step 2：完善 api_caller.py — 增加详细调用日志
+### 2.2 Agent 循环（单任务执行）
 
-每次 API 调用生成一条完整的调用记录，写入 `workspace/<task_id>/api_calls/call_XXX.json`：
+```
+agent_loop(task, system_prompt, tools):
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": task_prompt},
+    ]
+
+    for step in range(max_agent_steps):
+        response = call_api(messages, tools=tool_definitions)
+
+        if response.has_tool_calls:
+            for tool_call in response.tool_calls:
+                result = execute_tool(tool_call)
+                messages.append({"role": "assistant", "content": response})
+                messages.append({"role": "tool", "content": result})
+                evaluator.record_tool_call(tool_call, result)
+
+        elif response.is_task_done:
+            return response.summary
+
+        else:
+            # 模型纯文本回复，视为思考过程，继续循环
+            messages.append({"role": "assistant", "content": response.text})
+            messages.append({"role": "user", "content": "请继续执行，使用工具完成任务。"})
+
+    # 超过最大步数，标记失败
+    return TaskFailed("exceeded max agent steps")
+```
+
+**关键设计：Agent 循环的上下文管理**
+
+问题：多轮对话会导致上下文不断增长，最终超出窗口限制。
+
+解决：**滑动窗口 + 摘要压缩**
+- 保留最近 N 轮完整对话（默认 N=10）
+- 超出的历史轮次压缩为摘要（"之前你已经完成了：安装依赖、创建文件结构..."）
+- 系统 prompt 和当前任务描述始终保留
+
+```python
+def compress_messages(messages, keep_recent=10):
+    if len(messages) <= keep_recent * 2 + 2:  # system + user + recent
+        return messages
+
+    system = messages[0]
+    task = messages[1]
+    old = messages[2:-keep_recent*2]
+    recent = messages[-keep_recent*2:]
+
+    summary = summarize(old)  # 用模型或规则生成摘要
+    return [system, task, {"role": "user", "content": f"[历史摘要] {summary}"}] + recent
+```
+
+### 2.3 API 调用格式（以 DeepSeek 为例）
+
+DeepSeek 兼容 OpenAI 格式的 function calling：
 
 ```json
 {
-  "call_id": "call_001",
-  "timestamp": "2026-02-13T12:00:00Z",
-  "model": "deepseek-v3",
-  "task_node_id": "a1b2c3d4",
-  "phase": "judge | execute | fix | backtrack",
-  "system_prompt": "...",
-  "user_prompt": "...",
-  "response": "...",
-  "input_tokens": 800,
-  "output_tokens": 400,
-  "latency_ms": 2300,
-  "error": null
-}
-```
-
-修改点：
-- `call()` 方法增加 `task_node_id` 和 `phase` 参数
-- 增加 `workspace_dir` 配置，用于写入调用记录
-- 将 DeepSeek 设为默认测试模型，API key 通过环境变量 `DEEPSEEK_API_KEY` 传入
-
-### Step 3：实现 response_parser.py — 解析模型返回
-
-模型的返回是自然语言混合代码块的文本，需要从中提取结构化信息。
-
-两种返回场景的解析：
-
-**场景 A：可以构造验证用例（叶子任务）**
-```
-提取:
-- verification.description
-- verification.input_data
-- verification.expected_output
-- verification.command
-- implementation_hint（可选）
-```
-
-**场景 B：需要继续拆分**
-```
-提取:
-- subtasks: [{description, dependencies[], context_files[]}]
-- decomposition_reason
-```
-
-**场景 C：执行阶段返回代码**
-```
-提取:
-- 代码块（按文件名分组）
-- 文件路径
-```
-
-解析策略：
-1. 要求模型在返回中使用特定的标记（如 ````json ... ```）包裹结构化数据
-2. 先尝试提取 JSON 块；失败则用正则匹配关键段落
-3. 解析失败时记录原始返回，计为一次失败重试
-
-### Step 4：实现 prompt_builder.py — Prompt 模板管理
-
-5 种 prompt 场景：
-
-| 场景 | 何时触发 | 核心指令 |
-|------|---------|---------|
-| **judge** | process() 入口 | "判断能否构造验证用例，能则给出，不能则拆分" |
-| **execute** | 叶子任务执行 | "按验证标准完成代码，输出完整文件" |
-| **fix** | 验证失败后重试 | "根据错误信息修复代码" |
-| **backtrack** | 子任务多次失败 | "重新审视拆分方式，给出新方案" |
-| **integrate** | 所有子任务完成后 | "编写集成验证，确认子模块协作正确" |
-
-每个 prompt 由以下部分拼接：
-1. 系统模板（固定 ~100 token）
-2. 全局约定文件内容（如有）
-3. 当前任务描述
-4. 场景特定内容（验证标准 / 错误信息 / 子任务失败报告）
-5. 相关上下文文件内容（按 context_files 读取）
-6. 输出格式要求（JSON 标记块）
-
-**关键设计：输出格式要求**
-
-在每个 prompt 末尾附加格式指引，要求模型将结构化数据包裹在 `<json>...</json>` 标记中，便于 response_parser 提取。例如：
-
-```
-请将你的判断结果包裹在 <json> 标签中，格式如下：
-
-如果可以构造验证用例：
-<json>
-{
-  "can_verify": true,
-  "verification": {
-    "description": "...",
-    "input_data": "...",
-    "expected_output": "...",
-    "command": "..."
-  },
-  "implementation_hint": "..."
-}
-</json>
-
-如果需要拆分：
-<json>
-{
-  "can_verify": false,
-  "subtasks": [
-    {"description": "...", "dependencies": [], "context_files": []},
-    ...
-  ],
-  "decomposition_reason": "..."
-}
-</json>
-```
-
-### Step 5：实现 executor.py — Shell 执行器
-
-职责：在隔离的工作目录中执行 shell 命令（编译、运行测试等）。
-
-```python
-class Executor:
-    def __init__(self, workspace_dir: str)
-    async def run(self, command: str, timeout: int = 60) -> ExecutionResult
-    async def write_file(self, path: str, content: str) -> None
-    async def read_file(self, path: str) -> str
-```
-
-`ExecutionResult` 包含：
-- `returncode: int`
-- `stdout: str`
-- `stderr: str`
-- `timed_out: bool`
-- `duration_ms: int`
-
-安全考虑：
-- 命令执行有超时限制（默认 60 秒）
-- 工作目录限制在 workspace 下
-- stdout/stderr 截断上限（防止巨大输出撑爆内存），默认 10000 字符
-
-### Step 6：实现 processor.py — 核心递归引擎 ★
-
-这是整个系统的核心，实现设计方案中的 `process()` / `execute()` / `backtrack()` / `integration_verify()` 四个主流程。
-
-```python
-class RecursiveProcessor:
-    def __init__(self, api_caller, prompt_builder, executor, response_parser, evaluator, config)
-
-    async def run(self, task_description: str) -> TaskTree:
-        """入口：接受用户原始任务描述，返回完成后的任务树"""
-
-    async def process(self, task: TaskNode) -> None:
-        """核心递归：判断 → 执行 or 拆分"""
-
-    async def execute(self, task: TaskNode) -> None:
-        """叶子任务执行：调 API 写代码 → 运行验证"""
-
-    async def backtrack(self, task: TaskNode) -> None:
-        """回溯：子任务失败时，让模型重新拆分"""
-
-    async def integration_verify(self, task: TaskNode) -> None:
-        """集成验证：所有子任务完成后验证整体"""
-```
-
-**串行 vs 并行策略：**
-
-Phase 1 先实现串行（简单可靠）：
-```
-process(task):
-    response = call_api(judge_prompt)
-    parsed = parse(response)
-
-    if parsed.can_verify:
-        execute(task)
-    else:
-        for subtask in parsed.subtasks:
-            tree.add_node(subtask)
-        for subtask_id in tree.topological_order(task.children):
-            await process(tree.get_node(subtask_id))
-        integration_verify(task)
-```
-
-Phase 2 增加并行（同一层无依赖的任务并发执行）：
-```
-# 获取所有就绪任务（依赖已完成），用 asyncio.gather 并发
-while not tree.all_children_passed(task.id):
-    ready = tree.get_ready_tasks(task.children)
-    await asyncio.gather(*[process(tree.get_node(r)) for r in ready])
-```
-
-**重试与回溯逻辑：**
-```
-execute(task):
-    for attempt in range(max_attempts):
-        code = call_api(execute_prompt if attempt == 0 else fix_prompt)
-        write_files(code)
-        result = run_verification()
-        if result.success:
-            task.status = PASSED; return
-        task.error_log.append(result.stderr)
-
-    task.status = FAILED
-    backtrack(task.parent)
-
-backtrack(parent):
-    # 收集失败信息
-    failure_info = {child: errors for failed children}
-    response = call_api(backtrack_prompt with failure_info)
-    # 清除旧的子任务，用新拆分替换
-    replace_children(parent, new_subtasks)
-    # 重新处理
-    process(parent)  # 递归，但有深度/重试上限
-```
-
-**安全限制：**
-- 最大递归深度：5 层（可配置）
-- 单任务最大重试：3 次（可配置）
-- 单次回溯最大重试：2 次（可配置）
-- 总 API 调用上限：500 次（可配置，防止失控）
-
-### Step 7：实现 persistence.py — 状态持久化
-
-每次任务状态变化时，将完整的 TaskTree 序列化写入 `workspace/<run_id>/task_tree.json`。
-
-用途：
-1. 中断恢复：程序崩溃后可以从最后一个快照恢复
-2. 事后分析：查看任务树的最终状态
-3. 评估：评估器读取此文件生成报告
-
-```python
-class Persistence:
-    def __init__(self, workspace_dir: str)
-    def save_tree(self, tree: TaskTree) -> None
-    def load_tree(self) -> Optional[TaskTree]
-    def save_api_call(self, call_record: dict) -> None
-```
-
-### Step 8：实现 evaluator.py — 评估体系 ★★
-
-这是你特别强调的部分。评估器在运行结束后（或运行中实时）收集数据、计算指标、生成报告。
-
-#### 8.1 评估指标体系
-
-分三个维度：**效率**、**质量**、**过程**。
-
-**效率指标：**
-
-| 指标 | 计算方式 | 意义 |
-|------|---------|------|
-| 总 API 调用次数 | 直接计数 | 衡量整体调用开销 |
-| 总 token 消耗 | input + output 分别统计 | 衡量成本 |
-| 预估费用（$） | token × 单价 | 直观成本 |
-| 总耗时（秒） | end_time - start_time | 端到端时间 |
-| API 调用延迟分布 | P50/P90/P99 | 识别慢调用 |
-| 有效调用比 | 成功调用 / 总调用 | 判断调用是否浪费 |
-
-**质量指标：**
-
-| 指标 | 计算方式 | 意义 |
-|------|---------|------|
-| 一次通过率 | 首次验证通过的叶子 / 总叶子 | 模型代码质量 |
-| 平均重试次数 | 所有叶子的 attempts 均值 | 重试代价 |
-| 回溯次数 | backtrack 触发次数 | 拆分质量 |
-| 最终通过率 | PASSED 叶子 / 总叶子 | 最终完成度 |
-| 集成验证通过率 | 通过的中间节点 / 总中间节点 | 组合质量 |
-| 最终产物是否可运行 | 手动/自动验证 | 最终结果 |
-
-**过程指标：**
-
-| 指标 | 计算方式 | 意义 |
-|------|---------|------|
-| 任务树深度 | 最大深度 | 拆分是否过深 |
-| 任务树宽度 | 最大单节点子任务数 | 拆分是否过宽 |
-| 叶子任务数量 | 叶子节点计数 | 问题拆解粒度 |
-| 解析失败次数 | response_parser 失败计数 | prompt 设计质量 |
-| 按深度统计的通过率 | 各深度层的 pass/fail | 找到薄弱环节 |
-
-#### 8.2 评估报告格式
-
-运行结束后生成 `evaluation_report.json`：
-
-```json
-{
-  "run_id": "20260213_143000",
-  "task_description": "实现一个简单的计算器",
-  "model": "deepseek-v3",
-  "status": "completed | partial | failed",
-
-  "efficiency": {
-    "total_api_calls": 45,
-    "total_input_tokens": 38000,
-    "total_output_tokens": 22000,
-    "estimated_cost_usd": 0.03,
-    "total_duration_seconds": 180,
-    "api_latency_p50_ms": 1200,
-    "api_latency_p90_ms": 3500,
-    "effective_call_ratio": 0.82
-  },
-
-  "quality": {
-    "first_pass_rate": 0.75,
-    "avg_retries": 1.3,
-    "backtrack_count": 2,
-    "final_pass_rate": 0.95,
-    "integration_pass_rate": 1.0
-  },
-
-  "process": {
-    "tree_max_depth": 3,
-    "tree_max_width": 5,
-    "total_leaf_tasks": 20,
-    "total_intermediate_tasks": 8,
-    "parse_failures": 3,
-    "pass_rate_by_depth": {"0": 1.0, "1": 1.0, "2": 0.9, "3": 0.85}
-  },
-
-  "timeline": [
-    {"timestamp": "...", "event": "task_created", "task_id": "...", "detail": "..."},
-    {"timestamp": "...", "event": "api_call", "task_id": "...", "detail": "..."},
-    ...
+  "model": "deepseek-chat",
+  "messages": [...],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "shell",
+        "description": "在工作目录中执行 shell 命令",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "command": {"type": "string", "description": "要执行的命令"}
+          },
+          "required": ["command"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "write_file",
+        "description": "写入文件到工作目录",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {"type": "string", "description": "相对于工作目录的文件路径"},
+            "content": {"type": "string", "description": "文件内容"}
+          },
+          "required": ["path", "content"]
+        }
+      }
+    }
   ]
 }
 ```
 
-#### 8.3 评估器实现
+**注意：** 判断/拆分阶段 **不提供** tools（不需要 Agent 能力），只有执行阶段才启用。
 
-```python
-class Evaluator:
-    def __init__(self, workspace_dir: str)
+---
 
-    def record_event(self, event_type: str, task_id: str, detail: dict) -> None
-        """实时记录事件到 timeline"""
+## 三、迭代优化闭环详细设计 ★★
 
-    def generate_report(self, tree: TaskTree) -> dict
-        """运行结束后生成完整评估报告"""
+这是本框架的独特价值所在。大多数 AI 编码工具只做单次运行，没有系统化的自我改进机制。
 
-    def print_summary(self, report: dict) -> str
-        """生成人类可读的摘要，输出到终端"""
+### 3.1 迭代优化流程
+
+```
+┌──────────────────────────────────────────────────────┐
+│ 第 1 轮：用默认配置跑测试任务                            │
+│     ↓                                                │
+│ 生成 evaluation_report.json                           │
+│     ↓                                                │
+│ optimizer.py 分析报告，识别问题                          │
+│     ↓                                                │
+│ 生成 optimization_suggestion.json                     │
+│     ↓                                                │
+│ 自动/人工审核 → 更新 prompt_templates + config.yaml     │
+│     ↓                                                │
+│ 第 2 轮：用优化后配置跑 **同一个** 测试任务               │
+│     ↓                                                │
+│ 对比 report_v1 vs report_v2 → 指标是否改善？            │
+│     ↓                                                │
+│ 继续迭代 or 切换到更难的测试任务                          │
+└──────────────────────────────────────────────────────┘
 ```
 
-### Step 9：实现 logger_setup.py — 结构化日志
+### 3.2 optimizer.py 的工作方式
 
-两路日志输出：
+optimizer 本身也调用 LLM（可以是同一个模型，也可以是更强的模型），输入是：
 
-1. **控制台**：简洁的进度信息（彩色），格式：`[时间] [级别] [task_id] 消息`
-2. **文件**：完整的结构化日志，写入 `workspace/<run_id>/run.log`
+```
+输入:
+  1. 本轮 evaluation_report.json
+  2. 当前的 prompt_templates/*
+  3. 当前的 config.yaml
+  4. （如果非首轮）上一轮的 report + 上一轮的调整记录
 
-```python
-def setup_logging(workspace_dir: str, verbose: bool = False) -> None:
-    """配置 logging，同时输出到控制台和文件"""
+输出:
+  optimization_suggestion.json:
+  {
+    "analysis": {
+      "main_issues": [
+        "一次通过率只有 55%，主要失败在第 3 层叶子任务",
+        "parse_failures 达到 12 次，模型经常不按格式返回",
+        "平均 agent 步数 15，很多步骤是重复的无效操作"
+      ],
+      "root_causes": [
+        "execute.txt 的 prompt 没有明确要求模型先看目录结构再写代码",
+        "judge.txt 的 JSON 格式示例不够清晰",
+        "没有限制模型在单个任务中的最大文件数"
+      ]
+    },
+    "prompt_changes": [
+      {
+        "file": "execute.txt",
+        "change_type": "append",
+        "content": "在开始编码前，请先用 list_dir 和 read_file 了解现有文件结构。",
+        "reason": "减少模型盲写代码导致的路径错误"
+      },
+      {
+        "file": "judge.txt",
+        "change_type": "replace",
+        "old": "请将你的判断结果包裹在...",
+        "new": "你必须严格按以下 JSON 格式返回...(更详细的示例)",
+        "reason": "降低 parse_failures"
+      }
+    ],
+    "config_changes": [
+      {
+        "key": "max_agent_steps",
+        "old": 30,
+        "new": 20,
+        "reason": "强制模型更高效地行动，减少无效步骤"
+      }
+    ],
+    "expected_improvements": {
+      "first_pass_rate": "55% → 70%",
+      "parse_failures": "12 → 3",
+      "avg_agent_steps": "15 → 10"
+    }
+  }
 ```
 
-日志级别策略：
-- INFO：任务状态变化、API 调用摘要、验证结果
-- DEBUG：完整的 prompt 和 response（仅写入文件）
-- WARNING：解析失败、重试
-- ERROR：任务失败、回溯触发
+### 3.3 优化历史追踪
 
-### Step 10：实现 cli.py — CLI 入口
+每轮优化的完整记录保存在 `optimization_history/iteration_NNN.json`：
+
+```json
+{
+  "iteration": 1,
+  "timestamp": "2026-02-13T15:00:00Z",
+  "test_task": "用 Python 实现一个简单的计算器",
+  "model": "deepseek-v3",
+
+  "before": {
+    "run_id": "20260213_140000",
+    "first_pass_rate": 0.55,
+    "parse_failures": 12,
+    "total_cost_usd": 0.05,
+    "final_pass_rate": 0.80
+  },
+
+  "changes_applied": {
+    "prompt_changes": [...],
+    "config_changes": [...]
+  },
+
+  "after": {
+    "run_id": "20260213_150000",
+    "first_pass_rate": 0.72,
+    "parse_failures": 3,
+    "total_cost_usd": 0.04,
+    "final_pass_rate": 0.95
+  },
+
+  "improvement": {
+    "first_pass_rate": "+0.17",
+    "parse_failures": "-9",
+    "total_cost_usd": "-0.01",
+    "final_pass_rate": "+0.15"
+  },
+
+  "verdict": "improved"
+}
+```
+
+### 3.4 迭代模式 CLI
 
 ```bash
-# 基本用法
-python -m recursive_coder "实现一个简单的计算器，支持加减乘除"
+# 单次运行
+python -m recursive_coder run "实现一个计算器"
 
-# 指定模型和工作区
-python -m recursive_coder "..." --model deepseek-v3 --workspace ./my_workspace
+# 迭代优化模式（自动运行 N 轮，每轮之间自动优化）
+python -m recursive_coder iterate "实现一个计算器" --rounds 3
 
-# 从中断恢复
-python -m recursive_coder --resume ./workspace/20260213_143000
+# 查看优化历史
+python -m recursive_coder history
 
-# 查看历史运行的评估报告
-python -m recursive_coder --report ./workspace/20260213_143000
+# 对比两次运行
+python -m recursive_coder compare run_20260213_140000 run_20260213_150000
+
+# 用上一轮优化后的配置，换一个更难任务
+python -m recursive_coder run "实现一个 TODO 应用" --inherit-config
 ```
 
-CLI 参数：
+### 3.5 自动 vs 人工审核
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `task` | (必填) | 任务描述 |
-| `--model` | `deepseek-v3` | 默认模型 |
-| `--workspace` | `./workspace` | 工作区目录 |
-| `--max-depth` | `5` | 最大递归深度 |
-| `--max-retries` | `3` | 单任务最大重试 |
-| `--max-calls` | `500` | 总 API 调用上限 |
-| `--timeout` | `60` | 单命令超时秒数 |
-| `--parallel` | `false` | 是否启用并行执行 |
-| `--resume` | `None` | 恢复运行的工作区路径 |
-| `--report` | `None` | 查看评估报告 |
-| `--verbose` | `false` | 详细日志 |
+默认模式：**半自动**
+- optimizer 生成建议后，打印摘要到终端
+- 等待用户确认（`--auto-apply` 可跳过确认，全自动）
+- 用户可以手动修改建议后再应用
 
-### Step 11：配置和依赖
+全自动模式（`iterate --auto`）：
+- optimizer 的建议直接应用
+- 适合无人值守的批量实验
 
-**pyproject.toml 依赖：**
-- `httpx` — 异步 HTTP 请求（调 API）
-- `pyyaml` — 配置文件解析
-- 仅使用标准库：`asyncio`, `json`, `logging`, `subprocess`, `argparse`, `dataclasses`, `uuid`, `time`, `pathlib`
+---
 
-无重型依赖，保持轻量。
+## 四、评估指标体系（完善版）
 
-**config.yaml 默认配置：**
+在 v1 基础上新增 Agent 模式专属指标。
+
+### 4.1 效率指标
+
+| 指标 | 计算方式 | 意义 |
+|------|---------|------|
+| 总 API 调用次数 | 直接计数 | 整体开销 |
+| 总 token 消耗 | input + output | 成本 |
+| 预估费用 | token × 单价 | 直观成本 |
+| 总耗时 | wall clock | 端到端时间 |
+| API 延迟 P50/P90 | 统计 | 识别慢调用 |
+| **平均 Agent 步数** | ★ 每个叶子任务的平均 tool-use 轮数 | Agent 效率 |
+| **无效步数比** | ★ 未产生有效文件变更的步数 / 总步数 | Agent 浪费程度 |
+| 有效调用比 | 成功调用 / 总调用 | 是否浪费 |
+
+### 4.2 质量指标
+
+| 指标 | 计算方式 | 意义 |
+|------|---------|------|
+| 一次通过率 | 首次验证通过 / 总叶子 | 代码质量 |
+| 平均重试次数 | attempts 均值 | 重试代价 |
+| 回溯次数 | backtrack 触发次数 | 拆分质量 |
+| 最终通过率 | PASSED / 总叶子 | 完成度 |
+| 集成验证通过率 | 中间节点通过率 | 组合质量 |
+| **Agent 自修复率** | ★ Agent 在循环内自行发现并修复错误的次数 | 自主调试能力 |
+| **工具使用分布** | ★ 各 tool 的调用频率 | 理解 Agent 行为模式 |
+
+### 4.3 过程指标
+
+| 指标 | 计算方式 | 意义 |
+|------|---------|------|
+| 任务树深度 | max depth | 拆分深度 |
+| 任务树宽度 | max children | 拆分广度 |
+| 叶子任务数 | leaf count | 粒度 |
+| 解析失败次数 | parse error count | prompt 质量 |
+| 按深度通过率 | 各层 pass/fail | 薄弱环节 |
+| **shell 命令成功率** | ★ 命令执行成功 / 总命令 | 模型对环境的理解程度 |
+| **安全拦截次数** | ★ 被过滤的危险命令数 | 安全边界触发频率 |
+
+### 4.4 迭代指标（跨运行对比）
+
+| 指标 | 意义 |
+|------|------|
+| 迭代改善率 | 连续 N 轮中指标的趋势 |
+| 收敛速度 | 几轮后指标趋于稳定 |
+| prompt 变更次数 | 哪些 prompt 被改动最多（即最不稳定） |
+| 最大瓶颈 | 连续多轮仍未解决的问题 |
+
+---
+
+## 五、各模块实施细节
+
+### Step 1: pyproject.toml + config.yaml + .gitignore
+
+**依赖：**
+- `httpx` — 异步 HTTP
+- `pyyaml` — 配置解析
+- 标准库：asyncio, json, logging, subprocess, argparse, dataclasses, uuid, time, pathlib, re
+
+**config.yaml：**
 ```yaml
+# 模型配置
 default_model: "deepseek-v3"
-judge_model: null          # 为空则使用 default_model
-execute_model: null         # 为空则使用 default_model
+judge_model: null              # null 则用 default_model
+execute_model: null
+optimizer_model: null
+
+# 递归控制
 max_depth: 5
 max_retries: 3
 max_backtrack_retries: 2
-max_total_calls: 500
-command_timeout: 60
+max_total_api_calls: 500
+
+# Agent 控制
+max_agent_steps: 30            # 单任务最大 tool-use 轮数
+agent_context_window: 10       # 保留最近 N 轮完整对话
+command_timeout: 60            # shell 命令超时秒数
+output_truncate: 10000         # stdout/stderr 截断字符数
+
+# 安全
+security_mode: "strict"        # strict(白名单) | permissive(黑名单)
+command_whitelist: []           # 额外允许的命令（追加到默认白名单）
+command_blacklist: []           # 额外禁止的命令（追加到默认黑名单）
+
+# 迭代优化
+auto_apply_optimization: false  # 是否自动应用优化建议
+optimization_rounds: 3          # iterate 命令的默认轮数
+
+# 并行
 parallel: false
+max_parallel_tasks: 3
 ```
 
-### Step 12：框架自身的测试
+### Step 2: logger_setup.py
 
-| 测试文件 | 测试内容 |
-|---------|---------|
-| `test_models.py` | TaskNode/TaskTree 的序列化/反序列化、拓扑排序、状态管理 |
-| `test_prompt_builder.py` | 各场景 prompt 的正确拼接 |
-| `test_response_parser.py` | 各种模型返回格式的解析（正常/异常/边界情况） |
-| `test_executor.py` | 命令执行、超时、输出截断 |
+- 控制台：简洁，`[HH:MM:SS] [LEVEL] [task_id] message`
+- 文件：完整，写入 `workspace/<run_id>/run.log`
+- DEBUG 级别记录完整 prompt/response（仅文件）
 
-这些测试不依赖外部 API，用 mock 数据。
+### Step 3: models.py 完善
 
-## 三、测试方案
+新增字段（在现有 TaskNode 基础上）：
 
-使用 **DeepSeek V3** (`DEEPSEEK_API_KEY` 环境变量) 作为测试模型。
+```python
+# 时间追踪
+start_time: Optional[float] = None
+end_time: Optional[float] = None
+
+# API 调用追踪
+api_call_ids: list[str] = field(default_factory=list)
+token_usage: dict = field(default_factory=lambda: {"input": 0, "output": 0})
+
+# Agent 模式追踪
+agent_steps: int = 0                # 该任务的 tool-use 轮数
+tool_calls: list[dict] = field(default_factory=list)  # [{tool, args, result_summary}]
+
+# 分解追踪
+decomposition_reason: str = ""
+verification_result: str = ""
+```
+
+新增数据类：
+
+```python
+@dataclass
+class ToolCall:
+    """单次工具调用记录"""
+    tool_name: str
+    arguments: dict
+    result: str
+    success: bool
+    duration_ms: int
+
+@dataclass
+class AgentStep:
+    """Agent 循环中的一步"""
+    step_number: int
+    assistant_message: str
+    tool_calls: list[ToolCall]
+    timestamp: float
+```
+
+### Step 4: api_caller.py 完善
+
+关键变更：
+- 支持 **tool_use / function_calling** 格式
+- `call()` 方法新增参数：`tools`, `task_node_id`, `phase`
+- 每次调用记录写入 `api_calls/call_XXX.json`
+- DeepSeek 作为默认模型
+
+```python
+async def call(
+    self,
+    messages: list[dict],           # 改为接受完整 messages（支持多轮）
+    tools: Optional[list[dict]] = None,  # tool definitions
+    model_name: Optional[str] = None,
+    task_node_id: str = "",
+    phase: str = "",
+) -> dict:
+    """返回完整的 response dict（包含 tool_calls 或 text）"""
+```
+
+### Step 5: tools.py — Tool 定义与执行
+
+```python
+TOOL_DEFINITIONS = [...]  # OpenAI function calling 格式的 tool 定义
+
+class ToolExecutor:
+    def __init__(self, workspace_dir: str, config: dict)
+
+    async def execute(self, tool_name: str, arguments: dict) -> ToolCall:
+        """执行一个 tool call，返回结果"""
+
+    def _check_command_safety(self, command: str) -> tuple[bool, str]:
+        """检查命令安全性，返回 (allowed, reason)"""
+
+    async def _shell(self, command: str) -> str
+    async def _write_file(self, path: str, content: str) -> str
+    async def _read_file(self, path: str) -> str
+    async def _list_dir(self, path: str) -> str
+```
+
+### Step 6: agent_loop.py — Agent 多轮循环
+
+```python
+class AgentLoop:
+    def __init__(self, api_caller, tool_executor, evaluator, config)
+
+    async def run(self, task: TaskNode, system_prompt: str, user_prompt: str) -> AgentResult:
+        """运行 Agent 循环直到模型调用 task_done 或超过步数限制"""
+
+    def _compress_messages(self, messages: list[dict]) -> list[dict]:
+        """滑动窗口 + 历史摘要，控制上下文长度"""
+```
+
+`AgentResult`:
+```python
+@dataclass
+class AgentResult:
+    success: bool
+    summary: str
+    steps: list[AgentStep]
+    total_tokens: dict
+    files_modified: list[str]
+```
+
+### Step 7: prompt_builder.py
+
+从 `prompt_templates/` 目录读取模板文件，动态拼接。
+
+6 种场景：
+
+| 场景 | 模板文件 | 是否提供 tools |
+|------|---------|--------------|
+| judge | judge.txt | 否 |
+| execute | execute.txt | **是（Agent 模式）** |
+| fix | fix.txt | **是** |
+| backtrack | backtrack.txt | 否 |
+| integrate | integrate.txt | **是** |
+| optimize | (内置) | 否 |
+
+### Step 8: response_parser.py
+
+只解析 **judge** 和 **backtrack** 阶段的返回（这两个阶段模型不使用 tools，返回结构化 JSON）。
+
+execute/fix/integrate 阶段走 Agent 循环，不需要解析——模型通过 tool_call 直接操作。
+
+### Step 9: executor.py
+
+底层 shell 执行层，被 tools.py 调用。
+
+```python
+@dataclass
+class ExecutionResult:
+    command: str
+    returncode: int
+    stdout: str
+    stderr: str
+    timed_out: bool
+    duration_ms: int
+    blocked: bool          # 是否被安全过滤
+    block_reason: str      # 过滤原因
+```
+
+### Step 10: processor.py — 核心递归引擎
+
+```python
+class RecursiveProcessor:
+    def __init__(self, api_caller, prompt_builder, agent_loop,
+                 response_parser, evaluator, persistence, config)
+
+    async def run(self, task_description: str) -> TaskTree:
+        """主入口"""
+        root = TaskNode(description=task_description)
+        self.tree.add_node(root)
+        await self.process(root)
+        return self.tree
+
+    async def process(self, task: TaskNode) -> None:
+        """
+        核心递归:
+        1. 调 judge prompt（无 tools），解析返回
+        2. 如果 can_verify → 进入 Agent 执行循环
+        3. 如果不能 → 拆分为子任务，递归处理
+        """
+
+    async def execute_with_agent(self, task: TaskNode) -> None:
+        """
+        用 Agent 循环执行叶子任务:
+        1. 构造 execute prompt + tools
+        2. 启动 agent_loop
+        3. 运行验证命令
+        4. 通过 → PASSED；失败 → 进入 fix_with_agent
+        """
+
+    async def fix_with_agent(self, task: TaskNode, error_info: str) -> None:
+        """
+        用 Agent 循环修复:
+        1. 构造 fix prompt（包含错误信息）+ tools
+        2. 启动 agent_loop
+        3. 重新验证
+        """
+
+    async def backtrack(self, task: TaskNode) -> None:
+        """回溯（不用 Agent，只调一次 API 获取新拆分方案）"""
+
+    async def integration_verify(self, task: TaskNode) -> None:
+        """用 Agent 循环执行集成验证"""
+```
+
+### Step 11: evaluator.py
+
+在 v1 基础上增加：
+- Agent 相关指标收集
+- 迭代对比能力
+- timeline 事件中包含 tool_call 详情
+
+### Step 12: optimizer.py ★★
+
+```python
+class Optimizer:
+    def __init__(self, api_caller, config)
+
+    async def analyze(self, report: dict, prompt_templates: dict, config: dict,
+                      previous_iteration: Optional[dict] = None) -> dict:
+        """
+        输入当前评估报告 + prompt模板 + 配置 + 上轮记录
+        调用 LLM 分析，输出优化建议
+        """
+
+    def apply_suggestions(self, suggestions: dict) -> None:
+        """将优化建议应用到 prompt_templates/ 和 config.yaml"""
+
+    def save_iteration(self, iteration_data: dict) -> None:
+        """保存优化历史"""
+
+    def load_history(self) -> list[dict]:
+        """加载所有历史迭代记录"""
+
+    def print_comparison(self, before: dict, after: dict) -> str:
+        """生成两次运行的对比摘要"""
+```
+
+### Step 13: cli.py
+
+```bash
+# 子命令
+python -m recursive_coder run "任务描述"        # 单次运行
+python -m recursive_coder iterate "任务描述"    # 迭代优化
+python -m recursive_coder history               # 查看优化历史
+python -m recursive_coder compare <id1> <id2>   # 对比两次运行
+python -m recursive_coder report <run_id>       # 查看评估报告
+python -m recursive_coder resume <run_id>       # 从中断恢复
+```
+
+---
+
+## 六、实施顺序
+
+```
+阶段 A：基础设施（独立，可并行）
+  A1. pyproject.toml + config.yaml + .gitignore
+  A2. logger_setup.py
+  A3. models.py（完善）
+  A4. prompt_templates/*.txt（初版模板）
+
+阶段 B：底层模块（有依赖，按序）
+  B1. executor.py（纯 shell 执行，无 LLM 依赖）
+  B2. api_caller.py（完善，支持 tool_use）
+  B3. tools.py（依赖 executor）
+  B4. response_parser.py
+  B5. persistence.py
+
+阶段 C：核心引擎
+  C1. agent_loop.py（依赖 api_caller + tools）
+  C2. prompt_builder.py（依赖 prompt_templates）
+  C3. processor.py（依赖上面所有）
+  C4. evaluator.py
+
+阶段 D：迭代优化
+  D1. optimizer.py
+  D2. cli.py + __main__.py
+
+阶段 E：测试与验证
+  E1. 单元测试（mock，不调 API）
+  E2. 集成测试 1：Hello World（用 DeepSeek API）
+  E3. 集成测试 2：计算器
+  E4. 首轮迭代优化实验
+  E5. 集成测试 3：TODO 应用
+```
+
+---
+
+## 七、测试方案
 
 ### 测试任务（由简到难）
 
-**测试 1：Hello World 级别**
-```
-"用 Python 实现一个函数 add(a, b)，返回两个数的和，并写一个测试验证它。"
-```
-预期：不需要拆分，直接构造验证用例并执行。验证一次通过。
+| # | 任务 | 预期行为 | 评估重点 |
+|---|------|---------|---------|
+| 1 | `add(a,b)` 函数 + 测试 | 不拆分，直接 Agent 执行 | Agent 循环基本功能 |
+| 2 | 计算器（加减乘除+括号） | 拆分 2-3 层 | 拆分质量、集成验证 |
+| 3 | TODO 命令行应用 | 拆分 3+ 层 | 多模块协作、回溯 |
 
-**测试 2：中等复杂度**
-```
-"用 Python 实现一个简单的计算器，支持加减乘除和括号表达式解析，写测试验证。"
-```
-预期：拆分为 2-3 层，约 5-10 个叶子任务。
+### 每次测试后的检查清单
 
-**测试 3：较高复杂度**
-```
-"用 Python 实现一个命令行 TODO 应用，支持添加/删除/列出/标记完成任务，数据持久化到 JSON 文件。"
-```
-预期：拆分为 3+ 层，约 10-20 个叶子任务，涉及多模块集成。
+- [ ] 代码是否真的能运行？
+- [ ] evaluation_report.json 指标是否合理？
+- [ ] API 调用日志是否完整（每个 call_XXX.json）？
+- [ ] Agent 的 tool 调用链是否合理（有没有重复/无效操作）？
+- [ ] 安全过滤是否正常工作？
+- [ ] 任务树结构是否合理（`task_tree.json`）？
 
-### 每次测试后评估
+### 迭代实验设计
 
-运行完成后检查：
-1. `evaluation_report.json` 中各指标是否合理
-2. 生成的代码是否真的能运行
-3. API 调用日志是否完整可追溯
-4. 识别问题点 → 调整 prompt 模板或流程参数
-
-## 四、实施顺序和依赖关系
+用 **测试任务 2（计算器）** 作为基准任务，跑 3 轮迭代优化：
 
 ```
-Step 1 (models.py 完善)  ──┐
-                           ├── Step 6 (processor.py) ── Step 10 (cli.py)
-Step 2 (api_caller.py)  ───┤                              │
-Step 3 (response_parser) ──┤                              │
-Step 4 (prompt_builder) ───┤                              ▼
-Step 5 (executor.py) ──────┘                         测试运行
-                                                         │
-Step 7 (persistence.py) ──── Step 6 也需要              │
-Step 8 (evaluator.py) ────── Step 6 也需要              │
-Step 9 (logger_setup.py) ─── 所有模块都需要             │
-Step 11 (config/deps) ────── 最先做                     ▼
-Step 12 (tests) ───────────────────────────────── 最后做
+Round 1: 默认配置 → 报告 → 优化建议
+Round 2: 应用优化 → 报告 → 对比 Round 1 → 优化建议
+Round 3: 应用优化 → 报告 → 对比 Round 2 → 总结
 ```
 
-**实际实施顺序：**
+预期观察：
+- 一次通过率逐轮提升
+- parse_failures 逐轮降低
+- prompt 模板逐步收敛到稳定版本
+- 总成本基本持平或降低
 
-1. **Step 11** → pyproject.toml, config.yaml, .gitignore
-2. **Step 9** → logger_setup.py（所有模块依赖它）
-3. **Step 1** → 完善 models.py
-4. **Step 2** → 完善 api_caller.py
-5. **Step 3** → response_parser.py
-6. **Step 4** → prompt_builder.py
-7. **Step 5** → executor.py
-8. **Step 8** → evaluator.py
-9. **Step 7** → persistence.py
-10. **Step 6** → processor.py（核心，依赖前面所有模块）
-11. **Step 10** → cli.py + `__main__.py`
-12. **Step 12** → 单元测试
-13. **集成测试** → 用 DeepSeek API 跑测试任务 1/2/3
+---
 
-## 五、关键设计决策说明
+## 八、风险 & 应对
 
-### 为什么用 `<json>` 标签而不是纯 JSON 返回？
-
-模型返回纯 JSON 经常出错（格式不对、多余文字）。用标签包裹的方式：
-- 允许模型先用自然语言"思考"，然后输出结构化结果
-- 解析更可靠（正则提取标签内容）
-- 解析失败时还有自然语言部分可做 fallback
-
-### 为什么默认串行而不是并行？
-
-- 串行更容易调试和评估
-- 并行引入的竞态条件（文件冲突、依赖管理）增加复杂度
-- Phase 1 先跑通串行，评估报告确认流程正确后再开并行
-
-### DeepSeek 作为测试模型的理由
-
-- 成本极低（$0.27/M token），适合频繁调试
-- 代码能力在开源模型中位于前列
-- OpenAI 兼容 API，验证通用性
-- 你提供了可用的 API key
-
-## 六、风险 & 应对
-
-| 风险 | 应对 |
-|------|------|
-| DeepSeek 返回格式不稳定，解析频繁失败 | response_parser 做多层 fallback；记录解析失败率到评估指标；据此调整 prompt |
-| 递归拆分过深，叶子任务太碎 | 深度上限 5 层；evaluator 监控 tree_max_depth，过深时调整 prompt |
-| 验证命令不可靠（误报通过/误报失败） | 集成验证兜底；评估报告中单独标注集成验证结果 |
-| 模型生成的代码存在安全问题 | executor 在隔离工作目录运行；设命令超时；不执行 rm/网络请求等危险命令 |
-| API 调用失控（成本暴涨） | max_total_calls 硬上限；evaluator 实时跟踪 token 消耗 |
+| 风险 | 严重程度 | 应对 |
+|------|---------|------|
+| DeepSeek function calling 不稳定 | 高 | 用 `<json>` 标签做 fallback 解析；评估 parse_failures 后决定是否切换模型 |
+| Agent 循环陷入无限操作 | 高 | max_agent_steps 硬限制；无效步数检测（连续 3 步无文件变更则强制停止） |
+| 迭代优化建议质量差 | 中 | 默认人工审核模式；optimizer 用较强模型 |
+| shell 安全问题 | 高 | 白名单模式默认开启；所有命令有完整日志可审计 |
+| 上下文超出模型限制 | 中 | 滑动窗口 + 摘要压缩；监控每次调用的 token 数 |
+| 接口变更连锁反应 | 中 | 接口文件作为 context_files 传递；变更时标记受影响任务 |
