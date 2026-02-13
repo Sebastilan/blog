@@ -62,21 +62,20 @@ def _extract_json_block(text: str) -> Optional[dict]:
         except json.JSONDecodeError:
             pass
 
-    # Strategy 3: first { ... } in the text
-    depth = 0
-    start = -1
+    # Strategy 3: try each '{' as a potential JSON start
     for i, ch in enumerate(text):
         if ch == "{":
-            if depth == 0:
-                start = i
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0 and start >= 0:
-                try:
-                    return json.loads(text[start : i + 1])
-                except json.JSONDecodeError:
-                    start = -1
+            depth = 1
+            for j in range(i + 1, len(text)):
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return json.loads(text[i : j + 1])
+                        except json.JSONDecodeError:
+                            break  # try next '{'
 
     return None
 

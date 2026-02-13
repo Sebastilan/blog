@@ -83,6 +83,12 @@ class RecursiveProcessor:
             task.status = TaskStatus.FAILED
             return
 
+        max_depth = self.cfg.get("max_depth", 5)
+        if task.depth >= max_depth:
+            logger.error("Max depth %d reached for task %s, stopping.", max_depth, task.id)
+            task.status = TaskStatus.FAILED
+            return
+
         task.status = TaskStatus.RUNNING
         task.start_time = time.time()
         self.persistence.save_tree(self.tree)
@@ -249,8 +255,8 @@ class RecursiveProcessor:
         self.backtrack_count += 1
         max_bt = self.cfg.get("max_backtrack_retries", 2)
 
-        if self.backtrack_count > max_bt * (task.depth + 1):
-            logger.error("Too many backtracks for task %s, giving up", task.id)
+        if self.backtrack_count > max_bt:
+            logger.error("Global backtrack limit (%d) exceeded for task %s, giving up", max_bt, task.id)
             task.status = TaskStatus.FAILED
             return
 
