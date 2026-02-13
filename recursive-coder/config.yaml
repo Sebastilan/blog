@@ -1,0 +1,38 @@
+# === 模型配置 ===
+default_model: "deepseek-v3"
+judge_model: null
+execute_model: null
+optimizer_model: null
+
+# === 递归控制 ===
+max_depth: 5
+max_retries: 3
+max_backtrack_retries: 2
+max_total_api_calls: 500
+
+# === Agent 控制 ===
+max_agent_steps: 30
+agent_context_window: 10
+command_timeout: 60
+output_truncate: 10000
+idle_detection: 3          # 连续 N 步无文件变更则强制停止
+
+# === 安全 ===
+security_mode: "permissive"
+command_whitelist: []
+command_blacklist:
+  - "rm -rf /"
+  - "sudo"
+  - "reboot"
+  - "shutdown"
+  - "systemctl"
+  - "mkfs"
+  - "dd if="
+
+# === 迭代优化 ===
+auto_apply_optimization: false
+optimization_rounds: 3
+
+# === 并行 ===
+parallel: false
+max_parallel_tasks: 3

@@ -1,0 +1,28 @@
+当前任务：
+{task_description}
+
+验证标准：
+- 说明：{verification_description}
+- 预期输出：{expected_output}
+- 验证命令：{verification_command}
+
+{context_section}
+
+请完成此任务。你可以使用以下工具：
+- shell：执行终端命令（编译、运行、安装依赖、查看文件等）
+- write_file：写入文件
+- read_file：读取文件
+- list_dir：查看目录内容
+
+工作流程建议：
+1. 先用 list_dir 了解当前工作目录的文件结构
+2. 如果需要读取已有文件，用 read_file
+3. 用 write_file 写入代码文件
+4. 用 shell 运行验证命令，检查是否通过
+5. 如果验证失败，根据错误信息修改代码
+6. 验证通过后，调用 task_done 声明完成
+
+注意：
+- 所有文件路径都相对于工作目录
+- 一步步来，不要跳步
+- 确保验证命令通过后再声明完成

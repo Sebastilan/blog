@@ -1,0 +1,60 @@
+当前任务：
+{task_description}
+
+该任务的输入数据：
+{data_input_section}
+
+{context_section}
+
+请判断：这个任务是否足够小，可以直接实现并用上述输入数据验证？
+
+判断标准：
+- 任务足够具体，一次编码即可完成
+- 给定上面的输入数据，你能明确预测输出结果
+- 能写出验证命令（如 python test.py）
+
+你必须将结果包裹在 <json> 标签中，严格按以下格式返回：
+
+如果可以直接实现：
+<json>
+{{
+  "can_verify": true,
+  "verification": {{
+    "description": "验证内容说明",
+    "expected_output": "基于上述输入数据的预期输出（具体值）",
+    "command": "验证命令，如 python test_xxx.py",
+    "compare_mode": "contains"
+  }},
+  "data_port": {{
+    "input_description": "该任务接收什么",
+    "input_files": ["data/input.txt"],
+    "output_description": "该任务产出什么",
+    "output_files": ["output/result.txt"]
+  }},
+  "implementation_hint": "简要实现思路"
+}}
+</json>
+
+如果任务太大需要拆分，你必须为每个子任务定义清楚数据流——输入从哪来、输出给谁：
+<json>
+{{
+  "can_verify": false,
+  "subtasks": [
+    {{
+      "description": "子任务描述",
+      "data_port": {{
+        "input_description": "该子任务接收什么数据",
+        "input_files": ["从父任务继承或从兄弟任务输出"],
+        "output_description": "该子任务产出什么数据",
+        "output_files": ["output/xxx.txt"],
+        "upstream_task_ids": []
+      }},
+      "dependencies": [],
+      "context_files": []
+    }}
+  ],
+  "decomposition_reason": "拆分的理由"
+}}
+</json>
+
+关键：子任务的输入数据必须可追溯到本任务的输入数据，不要凭空编造测试数据。

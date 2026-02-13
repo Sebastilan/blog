@@ -1,252 +1,233 @@
-"""API caller module supporting multiple LLM providers."""
+"""Unified LLM API caller with tool-use support and per-call logging."""
 
 from __future__ import annotations
 
-import json
-import logging
 import os
+import time
 from dataclasses import dataclass
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Any, Optional
 
-logger = logging.getLogger(__name__)
+import httpx
+
+from .logger_setup import get_logger
+
+logger = get_logger("api")
 
 
 @dataclass
 class ModelConfig:
-    """Configuration for an LLM model."""
-
-    provider: str  # "anthropic", "openai", "google", "deepseek", "openai_compatible"
+    provider: str        # "anthropic" | "openai" | "openai_compatible"
     model_name: str
-    api_key_env: str  # environment variable name holding the API key
-    base_url: Optional[str] = None  # for OpenAI-compatible endpoints
-    max_tokens: int = 4096
+    api_key_env: str
+    base_url: Optional[str] = None
+    max_tokens: int = 8192
     temperature: float = 0.0
 
 
-# Preset model configurations
 PRESET_MODELS: dict[str, ModelConfig] = {
-    "claude-sonnet": ModelConfig(
-        provider="anthropic",
-        model_name="claude-sonnet-4-20250514",
-        api_key_env="ANTHROPIC_API_KEY",
-        max_tokens=8192,
-    ),
-    "claude-haiku": ModelConfig(
-        provider="anthropic",
-        model_name="claude-haiku-4-20250414",
-        api_key_env="ANTHROPIC_API_KEY",
-        max_tokens=8192,
-    ),
-    "gpt-4.1": ModelConfig(
-        provider="openai",
-        model_name="gpt-4.1",
-        api_key_env="OPENAI_API_KEY",
-        max_tokens=8192,
-    ),
-    "gpt-4.1-mini": ModelConfig(
-        provider="openai",
-        model_name="gpt-4.1-mini",
-        api_key_env="OPENAI_API_KEY",
-        max_tokens=8192,
-    ),
-    "gemini-2.5-pro": ModelConfig(
-        provider="google",
-        model_name="gemini-2.5-pro",
-        api_key_env="GOOGLE_API_KEY",
-        max_tokens=8192,
-    ),
-    "gemini-2.5-flash": ModelConfig(
-        provider="google",
-        model_name="gemini-2.5-flash",
-        api_key_env="GOOGLE_API_KEY",
-        max_tokens=8192,
-    ),
     "deepseek-v3": ModelConfig(
         provider="openai_compatible",
         model_name="deepseek-chat",
         api_key_env="DEEPSEEK_API_KEY",
         base_url="https://api.deepseek.com",
-        max_tokens=8192,
+    ),
+    "claude-sonnet": ModelConfig(
+        provider="anthropic",
+        model_name="claude-sonnet-4-20250514",
+        api_key_env="ANTHROPIC_API_KEY",
+    ),
+    "claude-haiku": ModelConfig(
+        provider="anthropic",
+        model_name="claude-haiku-4-20250414",
+        api_key_env="ANTHROPIC_API_KEY",
+    ),
+    "gpt-4.1-mini": ModelConfig(
+        provider="openai",
+        model_name="gpt-4.1-mini",
+        api_key_env="OPENAI_API_KEY",
+    ),
+    "gemini-2.5-flash": ModelConfig(
+        provider="openai_compatible",
+        model_name="gemini-2.5-flash",
+        api_key_env="GOOGLE_API_KEY",
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai",
     ),
     "qwen3-coder": ModelConfig(
         provider="openai_compatible",
         model_name="qwen3-coder",
         api_key_env="DASHSCOPE_API_KEY",
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        max_tokens=8192,
     ),
 }
 
 
 class APICaller:
-    """Unified interface for calling different LLM APIs."""
+    """Call LLM APIs.  Supports multi-turn messages + tool_use."""
 
-    def __init__(self, default_model: str = "claude-sonnet") -> None:
+    def __init__(
+        self,
+        default_model: str = "deepseek-v3",
+        persistence: Any = None,
+    ) -> None:
         self.default_model = default_model
-        self._clients: dict[str, object] = {}
+        self.persistence = persistence
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.call_count = 0
+        self.latencies: list[int] = []
 
-    def _get_model_config(self, model_name: str) -> ModelConfig:
-        if model_name in PRESET_MODELS:
-            return PRESET_MODELS[model_name]
-        raise ValueError(
-            f"Unknown model: {model_name}. "
-            f"Available: {list(PRESET_MODELS.keys())}"
-        )
+    def _cfg(self, name: str) -> ModelConfig:
+        if name in PRESET_MODELS:
+            return PRESET_MODELS[name]
+        raise ValueError(f"Unknown model: {name}")
 
     async def call(
         self,
-        system_prompt: str,
-        user_prompt: str,
+        messages: list[dict],
+        tools: Optional[list[dict]] = None,
         model_name: Optional[str] = None,
-    ) -> str:
-        """Call an LLM and return the text response."""
-        model = model_name or self.default_model
-        config = self._get_model_config(model)
-        api_key = os.environ.get(config.api_key_env, "")
+        task_node_id: str = "",
+        phase: str = "",
+    ) -> dict:
+        """Send messages (+ optional tools) to the LLM.
 
+        Returns the raw response dict in OpenAI-compatible shape:
+        {"choices": [{"message": {...}}], "usage": {...}}
+        """
+        model = model_name or self.default_model
+        cfg = self._cfg(model)
+        api_key = os.environ.get(cfg.api_key_env, "")
         if not api_key:
-            raise RuntimeError(
-                f"API key not found. Set the {config.api_key_env} environment variable."
-            )
+            raise RuntimeError(f"Set env var {cfg.api_key_env} for model {model}")
 
         self.call_count += 1
         logger.info(
-            "API call #%d to %s (%s)", self.call_count, model, config.model_name
+            "API #%d  model=%s  task=%s  phase=%s",
+            self.call_count, model, task_node_id, phase,
         )
 
-        if config.provider == "anthropic":
-            return await self._call_anthropic(config, api_key, system_prompt, user_prompt)
-        elif config.provider in ("openai", "openai_compatible"):
-            return await self._call_openai(config, api_key, system_prompt, user_prompt)
-        elif config.provider == "google":
-            return await self._call_google(config, api_key, system_prompt, user_prompt)
-        else:
-            raise ValueError(f"Unsupported provider: {config.provider}")
+        t0 = time.monotonic()
+        error_text: Optional[str] = None
+        data: dict = {}
 
-    async def _call_anthropic(
-        self,
-        config: ModelConfig,
-        api_key: str,
-        system_prompt: str,
-        user_prompt: str,
-    ) -> str:
-        import httpx
+        try:
+            if cfg.provider == "anthropic":
+                data = await self._anthropic(cfg, api_key, messages, tools)
+            else:
+                data = await self._openai_compat(cfg, api_key, messages, tools)
+        except Exception as exc:
+            error_text = str(exc)
+            logger.error("API call failed: %s", error_text)
+            raise
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
+        latency = int((time.monotonic() - t0) * 1000)
+        self.latencies.append(latency)
+
+        usage = data.get("usage", {})
+        inp = usage.get("prompt_tokens") or usage.get("input_tokens", 0)
+        out = usage.get("completion_tokens") or usage.get("output_tokens", 0)
+        self.total_input_tokens += inp
+        self.total_output_tokens += out
+        logger.info("  tokens in=%d out=%d  latency=%dms", inp, out, latency)
+
+        if self.persistence:
+            self.persistence.save_api_call({
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "model": model,
+                "task_node_id": task_node_id,
+                "phase": phase,
+                "messages_count": len(messages),
+                "has_tools": tools is not None,
+                "input_tokens": inp,
+                "output_tokens": out,
+                "latency_ms": latency,
+                "error": error_text,
+            })
+
+        return data
+
+    # ── OpenAI / OpenAI-compatible ──
+
+    async def _openai_compat(
+        self, cfg: ModelConfig, api_key: str,
+        messages: list[dict], tools: Optional[list[dict]],
+    ) -> dict:
+        base = cfg.base_url or "https://api.openai.com/v1"
+        url = f"{base}/chat/completions"
+
+        body: dict[str, Any] = {
+            "model": cfg.model_name,
+            "max_tokens": cfg.max_tokens,
+            "temperature": cfg.temperature,
+            "messages": messages,
+        }
+        if tools:
+            body["tools"] = tools
+
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            resp = await client.post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=body,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    # ── Anthropic ──
+
+    async def _anthropic(
+        self, cfg: ModelConfig, api_key: str,
+        messages: list[dict], tools: Optional[list[dict]],
+    ) -> dict:
+        system_text = ""
+        anthro_msgs = []
+        for m in messages:
+            if m["role"] == "system":
+                system_text = m["content"]
+            else:
+                anthro_msgs.append(m)
+
+        body: dict[str, Any] = {
+            "model": cfg.model_name,
+            "max_tokens": cfg.max_tokens,
+            "temperature": cfg.temperature,
+            "messages": anthro_msgs,
+        }
+        if system_text:
+            body["system"] = system_text
+
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            resp = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 headers={
                     "x-api-key": api_key,
                     "anthropic-version": "2023-06-01",
                     "content-type": "application/json",
                 },
-                json={
-                    "model": config.model_name,
-                    "max_tokens": config.max_tokens,
-                    "temperature": config.temperature,
-                    "system": system_prompt,
-                    "messages": [{"role": "user", "content": user_prompt}],
-                },
+                json=body,
             )
-            response.raise_for_status()
-            data = response.json()
+            resp.raise_for_status()
+            raw = resp.json()
 
-            input_tokens = data.get("usage", {}).get("input_tokens", 0)
-            output_tokens = data.get("usage", {}).get("output_tokens", 0)
-            self.total_input_tokens += input_tokens
-            self.total_output_tokens += output_tokens
-            logger.info("Tokens: in=%d, out=%d", input_tokens, output_tokens)
+        text = raw["content"][0]["text"] if raw.get("content") else ""
+        return {
+            "choices": [{"message": {"role": "assistant", "content": text}}],
+            "usage": {
+                "prompt_tokens": raw.get("usage", {}).get("input_tokens", 0),
+                "completion_tokens": raw.get("usage", {}).get("output_tokens", 0),
+            },
+        }
 
-            return data["content"][0]["text"]
-
-    async def _call_openai(
-        self,
-        config: ModelConfig,
-        api_key: str,
-        system_prompt: str,
-        user_prompt: str,
-    ) -> str:
-        import httpx
-
-        base_url = config.base_url or "https://api.openai.com/v1"
-        url = f"{base_url}/chat/completions"
-
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                url,
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": config.model_name,
-                    "max_tokens": config.max_tokens,
-                    "temperature": config.temperature,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            usage = data.get("usage", {})
-            input_tokens = usage.get("prompt_tokens", 0)
-            output_tokens = usage.get("completion_tokens", 0)
-            self.total_input_tokens += input_tokens
-            self.total_output_tokens += output_tokens
-            logger.info("Tokens: in=%d, out=%d", input_tokens, output_tokens)
-
-            return data["choices"][0]["message"]["content"]
-
-    async def _call_google(
-        self,
-        config: ModelConfig,
-        api_key: str,
-        system_prompt: str,
-        user_prompt: str,
-    ) -> str:
-        import httpx
-
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{config.model_name}:generateContent?key={api_key}"
-        )
-
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(
-                url,
-                headers={"Content-Type": "application/json"},
-                json={
-                    "system_instruction": {"parts": [{"text": system_prompt}]},
-                    "contents": [
-                        {"role": "user", "parts": [{"text": user_prompt}]}
-                    ],
-                    "generationConfig": {
-                        "temperature": config.temperature,
-                        "maxOutputTokens": config.max_tokens,
-                    },
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-
-            usage = data.get("usageMetadata", {})
-            input_tokens = usage.get("promptTokenCount", 0)
-            output_tokens = usage.get("candidatesTokenCount", 0)
-            self.total_input_tokens += input_tokens
-            self.total_output_tokens += output_tokens
-            logger.info("Tokens: in=%d, out=%d", input_tokens, output_tokens)
-
-            return data["candidates"][0]["content"]["parts"][0]["text"]
+    # ── Stats ──
 
     def get_stats(self) -> dict:
         return {
             "total_calls": self.call_count,
             "total_input_tokens": self.total_input_tokens,
             "total_output_tokens": self.total_output_tokens,
+            "latencies": self.latencies,
         }

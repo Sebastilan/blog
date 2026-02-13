@@ -1,0 +1,29 @@
+父任务：
+{parent_description}
+
+之前的拆分方式导致子任务失败。以下是失败详情：
+
+{failure_details}
+
+{context_section}
+
+请重新审视拆分方式，给出新的子任务列表。你可以：
+- 换一种拆分方式
+- 修改子任务的接口定义
+- 增加前置子任务（比如先研究某个技术点）
+- 合并过细的子任务
+
+请将结果包裹在 <json> 标签中：
+<json>
+{{
+  "subtasks": [
+    {{
+      "description": "子任务描述",
+      "dependencies": [],
+      "context_files": []
+    }}
+  ],
+  "decomposition_reason": "新拆分方案的理由",
+  "changes_from_previous": "相比上次拆分，主要改了什么"
+}}
+</json>
