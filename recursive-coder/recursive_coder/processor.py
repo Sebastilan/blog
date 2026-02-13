@@ -394,10 +394,8 @@ class RecursiveProcessor:
             return
 
         # Update interface_contract if backtrack provides a new one
-        from .response_parser import _extract_json_block
-        bt_data = _extract_json_block(text)
-        if bt_data and bt_data.get("interface_contract"):
-            task.interface_contract = bt_data["interface_contract"]
+        if parsed.interface_contract:
+            task.interface_contract = parsed.interface_contract
             logger.info(
                 "[BACKTRACK] task=%s updated interface_contract='%s'",
                 task.id, task.interface_contract[:200],

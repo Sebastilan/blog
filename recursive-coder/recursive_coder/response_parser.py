@@ -42,6 +42,7 @@ class JudgeResult:
 class BacktrackResult:
     subtasks: list[dict] = field(default_factory=list)
     decomposition_reason: str = ""
+    interface_contract: str = ""  # updated contract for re-decomposition
     changes_from_previous: str = ""
     raw_response: str = ""
     parse_success: bool = False
@@ -121,5 +122,6 @@ def parse_backtrack_response(text: str) -> BacktrackResult:
     result.parse_success = True
     result.subtasks = data.get("subtasks", [])
     result.decomposition_reason = data.get("decomposition_reason", "")
+    result.interface_contract = data.get("interface_contract", "")
     result.changes_from_previous = data.get("changes_from_previous", "")
     return result
