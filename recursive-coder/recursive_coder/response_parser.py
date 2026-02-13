@@ -18,17 +18,20 @@ class JudgeResult:
 
     can_verify: bool = False
 
-    # if can_verify == True
+    # if can_verify == True (leaf task planning)
     verification_description: str = ""
     expected_output: str = ""
     verification_command: str = ""
     compare_mode: str = "contains"
     data_port: dict = field(default_factory=dict)
     implementation_hint: str = ""
+    execution_plan: list[str] = field(default_factory=list)   # step-by-step plan
+    interface: dict = field(default_factory=dict)              # input/output contract
 
-    # if can_verify == False
+    # if can_verify == False (decomposition planning)
     subtasks: list[dict] = field(default_factory=list)
     decomposition_reason: str = ""
+    interface_contract: str = ""  # shared contract between sibling tasks
 
     # parsing meta
     raw_response: str = ""
@@ -98,9 +101,12 @@ def parse_judge_response(text: str) -> JudgeResult:
         result.compare_mode = v.get("compare_mode", "contains")
         result.data_port = data.get("data_port", {})
         result.implementation_hint = data.get("implementation_hint", "")
+        result.execution_plan = data.get("execution_plan", [])
+        result.interface = data.get("interface", {})
     else:
         result.subtasks = data.get("subtasks", [])
         result.decomposition_reason = data.get("decomposition_reason", "")
+        result.interface_contract = data.get("interface_contract", "")
 
     return result
 

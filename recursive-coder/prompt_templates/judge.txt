@@ -6,6 +6,8 @@
 
 {context_section}
 
+{parent_context_section}
+
 请判断：这个任务是否足够小，可以直接实现并用上述输入数据验证？
 
 判断标准：
@@ -15,10 +17,21 @@
 
 你必须将结果包裹在 <json> 标签中，严格按以下格式返回：
 
-如果可以直接实现：
+如果可以直接实现（叶子节点），你必须给出**详细的执行计划**，就像 Claude Code 的计划模式——逐步告诉 Agent 该做什么，把接口也定义清楚：
 <json>
 {{
   "can_verify": true,
+  "execution_plan": [
+    "1. 创建 xxx.py，定义函数 func_name(args) -> return_type",
+    "2. 实现核心逻辑：...",
+    "3. 处理边界情况：...",
+    "4. 编写测试脚本 test_xxx.py，用给定输入数据验证"
+  ],
+  "interface": {{
+    "function": "函数签名，如 tokenize(expr: str) -> list[dict]",
+    "input_format": "输入格式说明 + 示例",
+    "output_format": "输出格式说明 + 示例"
+  }},
   "verification": {{
     "description": "验证内容说明",
     "expected_output": "基于上述输入数据的预期输出（具体值）",
@@ -35,10 +48,14 @@
 }}
 </json>
 
-如果任务太大需要拆分，你必须为每个子任务定义清楚数据流——输入从哪来、输出给谁：
+如果任务太大需要拆分，你必须：
+1. 为每个子任务定义清楚数据流——输入从哪来、输出给谁
+2. 定义一份所有子任务共享的 **interface_contract（接口契约）**，明确子任务之间的数据格式约定
+
 <json>
 {{
   "can_verify": false,
+  "interface_contract": "所有子任务共享的接口契约。明确说明：\n1. 每个子任务的输入输出格式\n2. 子任务之间的数据传递格式（如 JSON schema、文件格式等）\n3. 具体示例",
   "subtasks": [
     {{
       "description": "子任务描述",
@@ -57,4 +74,7 @@
 }}
 </json>
 
-关键：子任务的输入数据必须可追溯到本任务的输入数据，不要凭空编造测试数据。
+关键：
+- 子任务的输入数据必须可追溯到本任务的输入数据，不要凭空编造测试数据。
+- interface_contract 是子任务之间的协作契约，必须具体到数据格式和示例，不要写空泛的描述。
+- execution_plan 要具体到文件名、函数名、参数类型，让 Agent 拿到后可以直接按步骤执行。

@@ -137,6 +137,11 @@ class TaskNode:
     agent_steps: int = 0
     tool_call_log: list[dict] = field(default_factory=list)
 
+    # Planning — produced by judge phase
+    execution_plan: list[str] = field(default_factory=list)  # step-by-step plan for leaf tasks
+    interface: dict = field(default_factory=dict)  # input/output contract for this task
+    interface_contract: str = ""  # shared contract between sibling tasks (set by parent's judge)
+
     # Misc
     implementation_hint: str = ""
     verification_result: str = ""
@@ -169,6 +174,9 @@ class TaskNode:
             "token_usage": self.token_usage,
             "agent_steps": self.agent_steps,
             "tool_call_log": self.tool_call_log,
+            "execution_plan": self.execution_plan,
+            "interface": self.interface,
+            "interface_contract": self.interface_contract,
             "implementation_hint": self.implementation_hint,
             "verification_result": self.verification_result,
         }
@@ -207,6 +215,9 @@ class TaskNode:
             token_usage=data.get("token_usage", {"input": 0, "output": 0}),
             agent_steps=data.get("agent_steps", 0),
             tool_call_log=data.get("tool_call_log", []),
+            execution_plan=data.get("execution_plan", []),
+            interface=data.get("interface", {}),
+            interface_contract=data.get("interface_contract", ""),
             implementation_hint=data.get("implementation_hint", ""),
             verification_result=data.get("verification_result", ""),
         )

@@ -5,6 +5,8 @@
 
 {failure_details}
 
+{interface_contract_section}
+
 {context_section}
 
 请重新审视拆分方式，给出新的子任务列表。你可以：
@@ -13,12 +15,22 @@
 - 增加前置子任务（比如先研究某个技术点）
 - 合并过细的子任务
 
+重要：你必须同时给出新的 interface_contract（接口契约），明确新子任务之间的数据格式约定。
+
 请将结果包裹在 <json> 标签中：
 <json>
 {{
+  "interface_contract": "新的接口契约，具体到数据格式和示例",
   "subtasks": [
     {{
       "description": "子任务描述",
+      "data_port": {{
+        "input_description": "该子任务接收什么数据",
+        "input_files": ["从父任务继承或从兄弟任务输出"],
+        "output_description": "该子任务产出什么数据",
+        "output_files": ["output/xxx.txt"],
+        "upstream_task_ids": []
+      }},
       "dependencies": [],
       "context_files": []
     }}

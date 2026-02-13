@@ -1,24 +1,28 @@
 当前任务：
 {task_description}
 
+{interface_section}
+
 验证标准：
 - 说明：{verification_description}
 - 预期输出：{expected_output}
 - 验证命令：{verification_command}
 
-上次执行失败，错误信息：
+执行失败，错误信息：
 ```
 {error_info}
 ```
+
+{error_history_section}
 
 {context_section}
 
 请分析错误原因，修复代码，并重新运行验证命令。
 你可以使用 shell、write_file、read_file、list_dir 工具。
 
-修复流程建议：
+修复要求：
 1. 先用 read_file 查看相关代码文件
-2. 分析错误原因
+2. 仔细分析错误原因（注意上面的接口定义，确保输出格式正确）
 3. 用 write_file 修改代码
 4. 用 shell 重新运行验证命令
 5. 通过后调用 task_done 声明完成

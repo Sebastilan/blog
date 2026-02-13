@@ -4,12 +4,15 @@
 所有子任务已完成。子任务列表：
 {children_summary}
 
+{interface_contract_section}
+
 {context_section}
 
 请编写集成验证，确认所有子模块协作正确。你可以使用 shell、write_file、read_file、list_dir 工具。
 
 集成验证流程：
 1. 用 list_dir 和 read_file 查看所有子模块的输出文件
-2. 编写一个集成测试脚本，验证模块间的交互
-3. 运行集成测试
-4. 通过后调用 task_done 声明完成
+2. 对照接口契约，验证各子模块的输出格式是否符合约定
+3. 编写一个集成测试脚本，验证模块间的数据流转是否正确
+4. 运行集成测试
+5. 通过后调用 task_done 声明完成
