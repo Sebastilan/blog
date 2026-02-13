@@ -1,6 +1,8 @@
 当前任务：
 {task_description}
 
+{ancestry_section}
+
 {interface_section}
 
 验证标准：

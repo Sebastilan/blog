@@ -45,7 +45,7 @@ class PromptBuilder:
                 parts.append(f"--- {p} --- (file not found)")
         return "\n".join(parts)
 
-    # ── Formatting helpers for new planning fields ──
+    # ── Formatting helpers ──
 
     def _format_execution_plan(self, task: TaskNode) -> str:
         """Format execution_plan as a prompt section."""
@@ -93,6 +93,46 @@ class PromptBuilder:
             return ""
         return "\n\n".join(parts)
 
+    def _format_ancestry_chain(self, task: TaskNode, tree=None) -> str:
+        """Gap 3: Build an ancestry chain so deep tasks know their global context.
+
+        Example output:
+          全局目标：实现一个支持 +−×÷ 和括号的计算器
+            └── 父任务：将计算器拆分为 tokenizer 和 evaluator
+                └── 当前任务：写 tokenizer.py ...
+        """
+        if not tree or not task.parent_id:
+            return ""
+
+        # Walk up the tree to collect ancestors
+        ancestors = []
+        node = task
+        while node.parent_id:
+            parent = tree.get_node(node.parent_id)
+            if not parent:
+                break
+            ancestors.append(parent.description)
+            node = parent
+
+        if not ancestors:
+            return ""
+
+        ancestors.reverse()  # root first
+        parts = ["任务上下文（从全局目标到当前任务的链路）："]
+        for i, desc in enumerate(ancestors):
+            indent = "  " * i
+            if i == 0:
+                parts.append(f"{indent}全局目标：{desc}")
+            else:
+                parts.append(f"{indent}└── 父任务：{desc}")
+        parts.append(f"{'  ' * len(ancestors)}└── 当前任务：{task.description}")
+
+        # Also include interface_contract if present
+        if task.interface_contract:
+            parts.append(f"\n接口契约：\n{task.interface_contract}")
+
+        return "\n".join(parts)
+
     # ── Phase prompts ──
 
     def judge(self, task: TaskNode, workspace: str, tree=None) -> str:
@@ -120,7 +160,7 @@ class PromptBuilder:
             parent_context_section=parent_context_section,
         )
 
-    def execute(self, task: TaskNode, workspace: str) -> str:
+    def execute(self, task: TaskNode, workspace: str, tree=None) -> str:
         tpl = self._load("execute.txt")
         v = task.verification
         context_section = ""
@@ -129,9 +169,12 @@ class PromptBuilder:
 
         execution_plan_section = self._format_execution_plan(task)
         interface_section = self._format_interface(task)
+        # Gap 3: Inject ancestry chain so agent knows global context
+        ancestry_section = self._format_ancestry_chain(task, tree)
 
         return tpl.format(
             task_description=task.description,
+            ancestry_section=ancestry_section,
             execution_plan_section=execution_plan_section,
             interface_section=interface_section,
             verification_description=v.description if v else "",
@@ -140,7 +183,7 @@ class PromptBuilder:
             context_section=context_section,
         )
 
-    def fix(self, task: TaskNode, error_info: str, workspace: str) -> str:
+    def fix(self, task: TaskNode, error_info: str, workspace: str, tree=None) -> str:
         tpl = self._load("fix.txt")
         v = task.verification
         context_section = ""
@@ -149,9 +192,12 @@ class PromptBuilder:
 
         interface_section = self._format_interface(task)
         error_history_section = self._format_error_history(task)
+        # Gap 3: Inject ancestry chain
+        ancestry_section = self._format_ancestry_chain(task, tree)
 
         return tpl.format(
             task_description=task.description,
+            ancestry_section=ancestry_section,
             interface_section=interface_section,
             verification_description=v.description if v else "",
             expected_output=v.expected_output if v else "",

@@ -1,6 +1,8 @@
 当前任务：
 {task_description}
 
+{ancestry_section}
+
 {execution_plan_section}
 
 {interface_section}

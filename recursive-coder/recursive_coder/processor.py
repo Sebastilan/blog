@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
+from pathlib import Path
 from typing import Optional
 
 from .agent_loop import AgentLoop, AgentResult
@@ -149,11 +151,15 @@ class RecursiveProcessor:
                 task.verification.command[:60] if task.verification else "",
             )
             if task.execution_plan:
-                for i, step in enumerate(task.execution_plan):
+                for step in task.execution_plan:
                     logger.debug("[PLAN] task=%s step %s", task.id, step)
 
             self.persistence.save_tree(self.tree)
             await self._execute_with_agent(task)
+
+            # Gap 2: Escalation — if leaf failed, try re-judging as decomposable
+            if task.status == TaskStatus.FAILED and task.depth < max_depth - 1:
+                await self._escalate_to_decompose(task)
 
         # Step 2b: Decompose (with interface_contract)
         else:
@@ -204,15 +210,8 @@ class RecursiveProcessor:
                         child.data_port.output_files,
                     )
 
-            # Process subtasks in topological order
-            ordered = self.tree.topological_order(task.children)
-            for child_id in ordered:
-                child = self.tree.get_node(child_id)
-                if child and child.status == TaskStatus.PENDING:
-                    await self.process(child)
-                    if child.status == TaskStatus.FAILED:
-                        await self._backtrack(task)
-                        return
+            # Gap 8: Process subtasks — parallel for independent, sequential for dependent
+            await self._process_children(task)
 
             # All children passed → integration verify
             if self.tree.all_children_passed(task.id):
@@ -229,6 +228,130 @@ class RecursiveProcessor:
         )
         self.persistence.save_tree(self.tree)
 
+    # ── Gap 8: Parallel child processing ──
+
+    async def _process_children(self, task: TaskNode) -> None:
+        """Process children respecting dependencies. Independent tasks run in parallel."""
+        remaining = set(task.children)
+
+        while remaining:
+            # Find tasks whose dependencies are all satisfied
+            ready = []
+            for cid in list(remaining):
+                child = self.tree.get_node(cid)
+                if not child or child.status != TaskStatus.PENDING:
+                    remaining.discard(cid)
+                    continue
+                deps_met = all(
+                    self.tree.get_node(d) and self.tree.get_node(d).status == TaskStatus.PASSED
+                    for d in child.dependencies
+                )
+                if deps_met:
+                    ready.append(cid)
+
+            if not ready:
+                # No tasks ready — either all done or stuck (unmet deps with failures)
+                break
+
+            if len(ready) == 1:
+                # Single task — run directly
+                child = self.tree.get_node(ready[0])
+                remaining.discard(ready[0])
+                await self.process(child)
+                if child.status == TaskStatus.FAILED:
+                    await self._backtrack(task)
+                    return
+            else:
+                # Multiple independent tasks — run in parallel
+                logger.info(
+                    "[PARALLEL] task=%s running %d children concurrently: %s",
+                    task.id, len(ready), ready,
+                )
+                tasks_to_run = []
+                for cid in ready:
+                    child = self.tree.get_node(cid)
+                    remaining.discard(cid)
+                    tasks_to_run.append(self.process(child))
+
+                await asyncio.gather(*tasks_to_run)
+
+                # Check if any failed
+                for cid in ready:
+                    child = self.tree.get_node(cid)
+                    if child and child.status == TaskStatus.FAILED:
+                        await self._backtrack(task)
+                        return
+
+    # ── Gap 2: Escalation — re-judge failed leaf as decomposable ──
+
+    async def _escalate_to_decompose(self, task: TaskNode) -> None:
+        """When a leaf fails all retries, try re-judging it as decomposable
+        before escalating to parent backtrack."""
+        max_depth = self.cfg.get("max_depth", 5)
+        if task.depth >= max_depth - 1:
+            logger.info("[ESCALATE] task=%s at max_depth, cannot decompose further", task.id)
+            return
+
+        logger.info(
+            "[ESCALATE] task=%s leaf failed after %d attempts, re-judging as decomposable",
+            task.id, task.attempts,
+        )
+
+        # Reset status and re-judge with a hint to decompose
+        task.status = TaskStatus.RUNNING
+        error_summary = "; ".join(e[:100] for e in task.error_log[-3:])
+
+        system_prompt = self.prompts.system()
+        user_prompt = self.prompts.judge(task, self.workspace, tree=self.tree)
+        # Append escalation context
+        user_prompt += (
+            f"\n\n重要提示：这个任务之前被判断为可以直接实现，但经过 {task.attempts} 次尝试全部失败。"
+            f"\n失败原因：{error_summary}"
+            f"\n请重新分析，将这个任务拆分为更小的子任务。"
+            f"\n你必须返回 can_verify=false 的拆分方案。"
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        resp = await self.api.call(
+            messages=messages,
+            task_node_id=task.id,
+            phase="escalate",
+            model_name=self.cfg.get("judge_model"),
+        )
+        self.total_api_calls += 1
+
+        text = resp["choices"][0]["message"].get("content", "")
+        parsed = parse_judge_response(text)
+
+        if not parsed.parse_success or parsed.can_verify or not parsed.subtasks:
+            logger.warning("[ESCALATE] task=%s failed to decompose, staying FAILED", task.id)
+            task.status = TaskStatus.FAILED
+            return
+
+        # Successfully decomposed — switch from leaf to composite
+        task.decomposition_reason = f"escalated: {parsed.decomposition_reason}"
+        task.interface_contract = parsed.interface_contract
+        task.verification = None  # no longer a leaf
+
+        logger.info(
+            "[ESCALATE] task=%s decomposed into %d subtasks",
+            task.id, len(parsed.subtasks),
+        )
+
+        self._add_subtasks(task, parsed.subtasks)
+        self.persistence.save_tree(self.tree)
+
+        await self._process_children(task)
+
+        if self.tree.all_children_passed(task.id):
+            await self._integration_verify(task)
+        else:
+            task.status = TaskStatus.FAILED
+
     # ── Agent execution ──
 
     async def _execute_with_agent(self, task: TaskNode) -> None:
@@ -241,10 +364,10 @@ class RecursiveProcessor:
             )
 
             if attempt == 1:
-                user_prompt = self.prompts.execute(task, self.workspace)
+                user_prompt = self.prompts.execute(task, self.workspace, tree=self.tree)
             else:
                 last_error = task.error_log[-1] if task.error_log else "unknown error"
-                user_prompt = self.prompts.fix(task, last_error, self.workspace)
+                user_prompt = self.prompts.fix(task, last_error, self.workspace, tree=self.tree)
 
             agent_result = await self.agent_loop.run(
                 task=task,
@@ -284,6 +407,12 @@ class RecursiveProcessor:
                     )
 
                 if passed:
+                    # Gap 5a: Verify declared output files actually exist
+                    missing = self._check_output_files_exist(task)
+                    if missing:
+                        logger.warning(
+                            "[OUTPUT] task=%s missing output files: %s", task.id, missing,
+                        )
                     task.status = TaskStatus.PASSED
                     logger.info("[PASS] task=%s", task.id)
                     return
@@ -296,6 +425,11 @@ class RecursiveProcessor:
                     )
             elif agent_result.success:
                 # No verification command — trust the agent's task_done
+                missing = self._check_output_files_exist(task)
+                if missing:
+                    logger.warning(
+                        "[OUTPUT] task=%s missing output files: %s", task.id, missing,
+                    )
                 task.status = TaskStatus.PASSED
                 logger.info("[PASS] task=%s (agent self-declared)", task.id)
                 return
@@ -331,15 +465,64 @@ class RecursiveProcessor:
         elif mode == "contains":
             return expected in actual_stdout
         elif mode == "file_diff":
-            # compare output files — not yet implemented, fallback to returncode
-            return result.returncode == 0
+            # Gap 5c: Compare output file against expected output file
+            return self._check_file_diff(task)
         else:
             return result.returncode == 0
+
+    # ── Gap 5c: file_diff implementation ──
+
+    def _check_file_diff(self, task: TaskNode) -> bool:
+        """Compare actual output file against expected output file."""
+        expected_file = task.data_port.expected_output_file
+        actual_files = task.data_port.output_files
+
+        if not expected_file or not actual_files:
+            logger.warning(
+                "[FILE_DIFF] task=%s missing expected_output_file or output_files, fallback to returncode",
+                task.id,
+            )
+            return True  # no files to compare, trust returncode
+
+        expected_path = Path(self.workspace) / expected_file
+        actual_path = Path(self.workspace) / actual_files[0]
+
+        if not expected_path.exists():
+            logger.warning("[FILE_DIFF] task=%s expected file not found: %s", task.id, expected_file)
+            return False
+        if not actual_path.exists():
+            logger.warning("[FILE_DIFF] task=%s actual file not found: %s", task.id, actual_files[0])
+            return False
+
+        expected_content = expected_path.read_text(encoding="utf-8", errors="replace").strip()
+        actual_content = actual_path.read_text(encoding="utf-8", errors="replace").strip()
+
+        match = expected_content == actual_content
+        if not match:
+            logger.debug(
+                "[FILE_DIFF] task=%s mismatch:\n  expected (first 200): '%s'\n  actual (first 200): '%s'",
+                task.id, expected_content[:200], actual_content[:200],
+            )
+        return match
+
+    # ── Gap 5a: Verify output files exist ──
+
+    def _check_output_files_exist(self, task: TaskNode) -> list[str]:
+        """Check that declared output_files actually exist on disk. Returns list of missing files."""
+        missing = []
+        for f in task.data_port.output_files:
+            full = Path(self.workspace) / f
+            if not full.exists():
+                missing.append(f)
+        return missing
 
     # ── Backtrack ──
 
     async def _backtrack(self, task: TaskNode) -> None:
-        """A child failed after all retries. Re-decompose this task."""
+        """A child failed after all retries. Re-decompose this task.
+
+        Gap 6: Selective backtrack — preserve successful children's outputs as context.
+        """
         self.backtrack_count += 1
         max_bt = self.cfg.get("max_backtrack_retries", 2)
 
@@ -351,24 +534,37 @@ class RecursiveProcessor:
             task.status = TaskStatus.FAILED
             return
 
-        # Collect failure info from children (include interface violations)
+        # Gap 6: Collect info from ALL children — both failed and succeeded
         failures = []
+        succeeded_context = []
         for cid in task.children:
             child = self.tree.get_node(cid)
-            if child and child.status == TaskStatus.FAILED:
+            if not child:
+                continue
+            if child.status == TaskStatus.FAILED:
                 failures.append(
-                    f"- {child.description} (id={child.id})\n"
+                    f"- [FAILED] {child.description} (id={child.id})\n"
                     f"  Errors: {'; '.join(child.error_log[-2:])}\n"
                     f"  Interface: {json.dumps(child.interface, ensure_ascii=False) if child.interface else 'N/A'}"
                 )
+            elif child.status == TaskStatus.PASSED:
+                succeeded_context.append(
+                    f"- [PASSED] {child.description} (id={child.id})\n"
+                    f"  Output files: {child.output_files}\n"
+                    f"  Interface: {json.dumps(child.interface, ensure_ascii=False) if child.interface else 'N/A'}"
+                )
+
         failure_details = "\n".join(failures)
+        if succeeded_context:
+            failure_details += "\n\n以下子任务已成功完成（请在重新拆分时考虑复用其输出）：\n"
+            failure_details += "\n".join(succeeded_context)
 
         logger.info(
-            "[BACKTRACK] task=%s attempt=%d/%d failed_children=%d",
+            "[BACKTRACK] task=%s attempt=%d/%d failed=%d succeeded=%d",
             task.id, self.backtrack_count, max_bt,
-            len(failures),
+            len(failures), len(succeeded_context),
         )
-        logger.debug("[BACKTRACK] task=%s failures:\n%s", task.id, failure_details)
+        logger.debug("[BACKTRACK] task=%s details:\n%s", task.id, failure_details)
 
         # Call LLM for new decomposition
         system_prompt = self.prompts.system()
@@ -413,14 +609,7 @@ class RecursiveProcessor:
         )
 
         # Re-process children
-        ordered = self.tree.topological_order(task.children)
-        for child_id in ordered:
-            child = self.tree.get_node(child_id)
-            if child and child.status == TaskStatus.PENDING:
-                await self.process(child)
-                if child.status == TaskStatus.FAILED:
-                    task.status = TaskStatus.FAILED
-                    return
+        await self._process_children(task)
 
         if self.tree.all_children_passed(task.id):
             await self._integration_verify(task)
@@ -430,7 +619,10 @@ class RecursiveProcessor:
     # ── Integration verify ──
 
     async def _integration_verify(self, task: TaskNode) -> None:
-        """After all children pass, run an integration verification via agent."""
+        """After all children pass, run an integration verification via agent.
+
+        Gap 4: Integration failure = real failure, not soft-pass.
+        """
         children_summary = ""
         for cid in task.children:
             child = self.tree.get_node(cid)
@@ -459,11 +651,12 @@ class RecursiveProcessor:
             task.status = TaskStatus.PASSED
             logger.info("[INTEGRATE] task=%s PASSED", task.id)
         else:
-            logger.warning(
-                "[INTEGRATE] task=%s FAILED (soft-pass: children all passed)",
-                task.id,
+            # Gap 4: Integration failure is a real failure
+            logger.warning("[INTEGRATE] task=%s FAILED", task.id)
+            task.status = TaskStatus.FAILED
+            task.error_log.append(
+                f"Integration verify failed: {agent_result.summary or 'agent did not confirm success'}"
             )
-            task.status = TaskStatus.PASSED  # soft-pass: children all passed
 
     # ── Helpers ──
 
