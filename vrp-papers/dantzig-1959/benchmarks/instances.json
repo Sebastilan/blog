@@ -1,0 +1,922 @@
+[
+  {
+    "name": "A-n32-k5",
+    "set": "A",
+    "n_customers": 31,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 784
+  },
+  {
+    "name": "A-n33-k5",
+    "set": "A",
+    "n_customers": 32,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 661
+  },
+  {
+    "name": "A-n33-k6",
+    "set": "A",
+    "n_customers": 32,
+    "n_vehicles": 6,
+    "capacity": 100,
+    "optimal": 742
+  },
+  {
+    "name": "A-n34-k5",
+    "set": "A",
+    "n_customers": 33,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 778
+  },
+  {
+    "name": "A-n36-k5",
+    "set": "A",
+    "n_customers": 35,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 799
+  },
+  {
+    "name": "A-n37-k5",
+    "set": "A",
+    "n_customers": 36,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 669
+  },
+  {
+    "name": "A-n37-k6",
+    "set": "A",
+    "n_customers": 36,
+    "n_vehicles": 6,
+    "capacity": 100,
+    "optimal": 949
+  },
+  {
+    "name": "A-n38-k5",
+    "set": "A",
+    "n_customers": 37,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 730
+  },
+  {
+    "name": "A-n39-k5",
+    "set": "A",
+    "n_customers": 38,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 822
+  },
+  {
+    "name": "A-n39-k6",
+    "set": "A",
+    "n_customers": 38,
+    "n_vehicles": 6,
+    "capacity": 100,
+    "optimal": 831
+  },
+  {
+    "name": "A-n44-k6",
+    "set": "A",
+    "n_customers": 43,
+    "n_vehicles": 6,
+    "capacity": 100,
+    "optimal": 937
+  },
+  {
+    "name": "A-n45-k6",
+    "set": "A",
+    "n_customers": 44,
+    "n_vehicles": 6,
+    "capacity": 100,
+    "optimal": 944
+  },
+  {
+    "name": "A-n45-k7",
+    "set": "A",
+    "n_customers": 44,
+    "n_vehicles": 7,
+    "capacity": 100,
+    "optimal": 1146
+  },
+  {
+    "name": "A-n46-k7",
+    "set": "A",
+    "n_customers": 45,
+    "n_vehicles": 7,
+    "capacity": 100,
+    "optimal": 914
+  },
+  {
+    "name": "A-n48-k7",
+    "set": "A",
+    "n_customers": 47,
+    "n_vehicles": 7,
+    "capacity": 100,
+    "optimal": 1073
+  },
+  {
+    "name": "A-n53-k7",
+    "set": "A",
+    "n_customers": 52,
+    "n_vehicles": 7,
+    "capacity": 100,
+    "optimal": 1010
+  },
+  {
+    "name": "A-n54-k7",
+    "set": "A",
+    "n_customers": 53,
+    "n_vehicles": 7,
+    "capacity": 100,
+    "optimal": 1167
+  },
+  {
+    "name": "A-n55-k9",
+    "set": "A",
+    "n_customers": 54,
+    "n_vehicles": 9,
+    "capacity": 100,
+    "optimal": 1073
+  },
+  {
+    "name": "A-n60-k9",
+    "set": "A",
+    "n_customers": 59,
+    "n_vehicles": 9,
+    "capacity": 100,
+    "optimal": 1354
+  },
+  {
+    "name": "A-n61-k9",
+    "set": "A",
+    "n_customers": 60,
+    "n_vehicles": 9,
+    "capacity": 100,
+    "optimal": 1034
+  },
+  {
+    "name": "A-n62-k8",
+    "set": "A",
+    "n_customers": 61,
+    "n_vehicles": 8,
+    "capacity": 100,
+    "optimal": 1288
+  },
+  {
+    "name": "A-n63-k9",
+    "set": "A",
+    "n_customers": 62,
+    "n_vehicles": 9,
+    "capacity": 100,
+    "optimal": 1616
+  },
+  {
+    "name": "A-n63-k10",
+    "set": "A",
+    "n_customers": 62,
+    "n_vehicles": 10,
+    "capacity": 100,
+    "optimal": 1314
+  },
+  {
+    "name": "A-n64-k9",
+    "set": "A",
+    "n_customers": 63,
+    "n_vehicles": 9,
+    "capacity": 100,
+    "optimal": 1401
+  },
+  {
+    "name": "A-n65-k9",
+    "set": "A",
+    "n_customers": 64,
+    "n_vehicles": 9,
+    "capacity": 100,
+    "optimal": 1174
+  },
+  {
+    "name": "A-n69-k9",
+    "set": "A",
+    "n_customers": 68,
+    "n_vehicles": 9,
+    "capacity": 100,
+    "optimal": 1159
+  },
+  {
+    "name": "A-n80-k10",
+    "set": "A",
+    "n_customers": 79,
+    "n_vehicles": 10,
+    "capacity": 100,
+    "optimal": 1763
+  },
+  {
+    "name": "B-n31-k5",
+    "set": "B",
+    "n_customers": 30,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 672
+  },
+  {
+    "name": "B-n34-k5",
+    "set": "B",
+    "n_customers": 33,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 788
+  },
+  {
+    "name": "B-n35-k5",
+    "set": "B",
+    "n_customers": 34,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 955
+  },
+  {
+    "name": "B-n38-k6",
+    "set": "B",
+    "n_customers": 37,
+    "n_vehicles": 6,
+    "capacity": 100,
+    "optimal": 805
+  },
+  {
+    "name": "B-n39-k5",
+    "set": "B",
+    "n_customers": 38,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 549
+  },
+  {
+    "name": "B-n41-k6",
+    "set": "B",
+    "n_customers": 40,
+    "n_vehicles": 6,
+    "capacity": 100,
+    "optimal": 829
+  },
+  {
+    "name": "B-n43-k6",
+    "set": "B",
+    "n_customers": 42,
+    "n_vehicles": 6,
+    "capacity": 100,
+    "optimal": 742
+  },
+  {
+    "name": "B-n44-k7",
+    "set": "B",
+    "n_customers": 43,
+    "n_vehicles": 7,
+    "capacity": 100,
+    "optimal": 909
+  },
+  {
+    "name": "B-n45-k5",
+    "set": "B",
+    "n_customers": 44,
+    "n_vehicles": 5,
+    "capacity": 100,
+    "optimal": 751
+  },
+  {
+    "name": "B-n45-k6",
+    "set": "B",
+    "n_customers": 44,
+    "n_vehicles": 6,
+    "capacity": 100,
+    "optimal": 678
+  },
+  {
+    "name": "B-n50-k7",
+    "set": "B",
+    "n_customers": 49,
+    "n_vehicles": 7,
+    "capacity": 100,
+    "optimal": 741
+  },
+  {
+    "name": "B-n50-k8",
+    "set": "B",
+    "n_customers": 49,
+    "n_vehicles": 8,
+    "capacity": 100,
+    "optimal": 1312
+  },
+  {
+    "name": "B-n51-k7",
+    "set": "B",
+    "n_customers": 50,
+    "n_vehicles": 7,
+    "capacity": 100,
+    "optimal": 1016
+  },
+  {
+    "name": "B-n52-k7",
+    "set": "B",
+    "n_customers": 51,
+    "n_vehicles": 7,
+    "capacity": 100,
+    "optimal": 747
+  },
+  {
+    "name": "B-n56-k7",
+    "set": "B",
+    "n_customers": 55,
+    "n_vehicles": 7,
+    "capacity": 100,
+    "optimal": 707
+  },
+  {
+    "name": "B-n57-k7",
+    "set": "B",
+    "n_customers": 56,
+    "n_vehicles": 7,
+    "capacity": 100,
+    "optimal": 1140
+  },
+  {
+    "name": "B-n57-k9",
+    "set": "B",
+    "n_customers": 56,
+    "n_vehicles": 9,
+    "capacity": 100,
+    "optimal": 1598
+  },
+  {
+    "name": "B-n63-k10",
+    "set": "B",
+    "n_customers": 62,
+    "n_vehicles": 10,
+    "capacity": 100,
+    "optimal": 1496
+  },
+  {
+    "name": "B-n64-k9",
+    "set": "B",
+    "n_customers": 63,
+    "n_vehicles": 9,
+    "capacity": 100,
+    "optimal": 861
+  },
+  {
+    "name": "B-n66-k9",
+    "set": "B",
+    "n_customers": 65,
+    "n_vehicles": 9,
+    "capacity": 100,
+    "optimal": 1316
+  },
+  {
+    "name": "B-n67-k10",
+    "set": "B",
+    "n_customers": 66,
+    "n_vehicles": 10,
+    "capacity": 100,
+    "optimal": 1032
+  },
+  {
+    "name": "B-n68-k9",
+    "set": "B",
+    "n_customers": 67,
+    "n_vehicles": 9,
+    "capacity": 100,
+    "optimal": 1272
+  },
+  {
+    "name": "B-n78-k10",
+    "set": "B",
+    "n_customers": 77,
+    "n_vehicles": 10,
+    "capacity": 100,
+    "optimal": 1221
+  },
+  {
+    "name": "E-n13-k4",
+    "set": "E",
+    "n_customers": 12,
+    "n_vehicles": 4,
+    "capacity": 6000,
+    "optimal": 247
+  },
+  {
+    "name": "E-n22-k4",
+    "set": "E",
+    "n_customers": 21,
+    "n_vehicles": 4,
+    "capacity": 6000,
+    "optimal": 375
+  },
+  {
+    "name": "E-n23-k3",
+    "set": "E",
+    "n_customers": 22,
+    "n_vehicles": 3,
+    "capacity": 4500,
+    "optimal": 569
+  },
+  {
+    "name": "E-n30-k3",
+    "set": "E",
+    "n_customers": 29,
+    "n_vehicles": 3,
+    "capacity": 4500,
+    "optimal": 503
+  },
+  {
+    "name": "E-n31-k7",
+    "set": "E",
+    "n_customers": 30,
+    "n_vehicles": 7,
+    "capacity": 140,
+    "optimal": 1212
+  },
+  {
+    "name": "E-n33-k4",
+    "set": "E",
+    "n_customers": 32,
+    "n_vehicles": 4,
+    "capacity": 8000,
+    "optimal": 835
+  },
+  {
+    "name": "E-n51-k5",
+    "set": "E",
+    "n_customers": 50,
+    "n_vehicles": 5,
+    "capacity": 160,
+    "optimal": 521
+  },
+  {
+    "name": "E-n76-k7",
+    "set": "E",
+    "n_customers": 75,
+    "n_vehicles": 7,
+    "capacity": 220,
+    "optimal": 682
+  },
+  {
+    "name": "E-n76-k8",
+    "set": "E",
+    "n_customers": 75,
+    "n_vehicles": 8,
+    "capacity": 180,
+    "optimal": 735
+  },
+  {
+    "name": "E-n76-k10",
+    "set": "E",
+    "n_customers": 75,
+    "n_vehicles": 10,
+    "capacity": 140,
+    "optimal": 830
+  },
+  {
+    "name": "E-n76-k14",
+    "set": "E",
+    "n_customers": 75,
+    "n_vehicles": 14,
+    "capacity": 100,
+    "optimal": 1021
+  },
+  {
+    "name": "E-n101-k8",
+    "set": "E",
+    "n_customers": 100,
+    "n_vehicles": 8,
+    "capacity": 200,
+    "optimal": 815
+  },
+  {
+    "name": "E-n101-k14",
+    "set": "E",
+    "n_customers": 100,
+    "n_vehicles": 14,
+    "capacity": 112,
+    "optimal": 1067
+  },
+  {
+    "name": "F-n45-k4",
+    "set": "F",
+    "n_customers": 44,
+    "n_vehicles": 4,
+    "capacity": 2010,
+    "optimal": 724
+  },
+  {
+    "name": "F-n72-k4",
+    "set": "F",
+    "n_customers": 71,
+    "n_vehicles": 4,
+    "capacity": 30000,
+    "optimal": 237
+  },
+  {
+    "name": "F-n135-k7",
+    "set": "F",
+    "n_customers": 134,
+    "n_vehicles": 7,
+    "capacity": 2210,
+    "optimal": 1162
+  },
+  {
+    "name": "M-n101-k10",
+    "set": "M",
+    "n_customers": 100,
+    "n_vehicles": 10,
+    "capacity": 200,
+    "optimal": 820
+  },
+  {
+    "name": "M-n121-k7",
+    "set": "M",
+    "n_customers": 120,
+    "n_vehicles": 7,
+    "capacity": 200,
+    "optimal": 1034
+  },
+  {
+    "name": "M-n151-k12",
+    "set": "M",
+    "n_customers": 150,
+    "n_vehicles": 12,
+    "capacity": 200,
+    "optimal": 1015
+  },
+  {
+    "name": "M-n200-k16",
+    "set": "M",
+    "n_customers": 199,
+    "n_vehicles": 16,
+    "capacity": 200,
+    "optimal": 1274
+  },
+  {
+    "name": "P-n16-k8",
+    "set": "P",
+    "n_customers": 15,
+    "n_vehicles": 8,
+    "capacity": 35,
+    "optimal": 450
+  },
+  {
+    "name": "P-n19-k2",
+    "set": "P",
+    "n_customers": 18,
+    "n_vehicles": 2,
+    "capacity": 160,
+    "optimal": 212
+  },
+  {
+    "name": "P-n20-k2",
+    "set": "P",
+    "n_customers": 19,
+    "n_vehicles": 2,
+    "capacity": 160,
+    "optimal": 216
+  },
+  {
+    "name": "P-n21-k2",
+    "set": "P",
+    "n_customers": 20,
+    "n_vehicles": 2,
+    "capacity": 160,
+    "optimal": 211
+  },
+  {
+    "name": "P-n22-k2",
+    "set": "P",
+    "n_customers": 21,
+    "n_vehicles": 2,
+    "capacity": 160,
+    "optimal": 216
+  },
+  {
+    "name": "P-n22-k8",
+    "set": "P",
+    "n_customers": 21,
+    "n_vehicles": 8,
+    "capacity": 3000,
+    "optimal": 590
+  },
+  {
+    "name": "P-n23-k8",
+    "set": "P",
+    "n_customers": 22,
+    "n_vehicles": 8,
+    "capacity": 40,
+    "optimal": 529
+  },
+  {
+    "name": "P-n40-k5",
+    "set": "P",
+    "n_customers": 39,
+    "n_vehicles": 5,
+    "capacity": 140,
+    "optimal": 458
+  },
+  {
+    "name": "P-n45-k5",
+    "set": "P",
+    "n_customers": 44,
+    "n_vehicles": 5,
+    "capacity": 150,
+    "optimal": 510
+  },
+  {
+    "name": "P-n50-k7",
+    "set": "P",
+    "n_customers": 49,
+    "n_vehicles": 7,
+    "capacity": 150,
+    "optimal": 554
+  },
+  {
+    "name": "P-n50-k8",
+    "set": "P",
+    "n_customers": 49,
+    "n_vehicles": 8,
+    "capacity": 120,
+    "optimal": 629
+  },
+  {
+    "name": "P-n50-k10",
+    "set": "P",
+    "n_customers": 49,
+    "n_vehicles": 10,
+    "capacity": 100,
+    "optimal": 696
+  },
+  {
+    "name": "P-n51-k10",
+    "set": "P",
+    "n_customers": 50,
+    "n_vehicles": 10,
+    "capacity": 80,
+    "optimal": 741
+  },
+  {
+    "name": "P-n55-k7",
+    "set": "P",
+    "n_customers": 54,
+    "n_vehicles": 7,
+    "capacity": 170,
+    "optimal": 568
+  },
+  {
+    "name": "P-n55-k10",
+    "set": "P",
+    "n_customers": 54,
+    "n_vehicles": 10,
+    "capacity": 115,
+    "optimal": 694
+  },
+  {
+    "name": "P-n55-k15",
+    "set": "P",
+    "n_customers": 54,
+    "n_vehicles": 15,
+    "capacity": 70,
+    "optimal": 941
+  },
+  {
+    "name": "P-n60-k10",
+    "set": "P",
+    "n_customers": 59,
+    "n_vehicles": 10,
+    "capacity": 120,
+    "optimal": 744
+  },
+  {
+    "name": "P-n60-k15",
+    "set": "P",
+    "n_customers": 59,
+    "n_vehicles": 15,
+    "capacity": 80,
+    "optimal": 968
+  },
+  {
+    "name": "P-n65-k10",
+    "set": "P",
+    "n_customers": 64,
+    "n_vehicles": 10,
+    "capacity": 130,
+    "optimal": 792
+  },
+  {
+    "name": "P-n70-k10",
+    "set": "P",
+    "n_customers": 69,
+    "n_vehicles": 10,
+    "capacity": 135,
+    "optimal": 827
+  },
+  {
+    "name": "P-n76-k4",
+    "set": "P",
+    "n_customers": 75,
+    "n_vehicles": 4,
+    "capacity": 350,
+    "optimal": 593
+  },
+  {
+    "name": "P-n76-k5",
+    "set": "P",
+    "n_customers": 75,
+    "n_vehicles": 5,
+    "capacity": 280,
+    "optimal": 627
+  },
+  {
+    "name": "P-n101-k4",
+    "set": "P",
+    "n_customers": 100,
+    "n_vehicles": 4,
+    "capacity": 400,
+    "optimal": 681
+  },
+  {
+    "name": "X-n101-k25",
+    "set": "X",
+    "n_customers": 100,
+    "n_vehicles": 25,
+    "capacity": 206,
+    "optimal": 27591
+  },
+  {
+    "name": "X-n106-k14",
+    "set": "X",
+    "n_customers": 105,
+    "n_vehicles": 14,
+    "capacity": 600,
+    "optimal": 26362
+  },
+  {
+    "name": "X-n110-k13",
+    "set": "X",
+    "n_customers": 109,
+    "n_vehicles": 13,
+    "capacity": 66,
+    "optimal": 14971
+  },
+  {
+    "name": "X-n115-k10",
+    "set": "X",
+    "n_customers": 114,
+    "n_vehicles": 10,
+    "capacity": 169,
+    "optimal": 12747
+  },
+  {
+    "name": "X-n120-k6",
+    "set": "X",
+    "n_customers": 119,
+    "n_vehicles": 6,
+    "capacity": 21,
+    "optimal": 13332
+  },
+  {
+    "name": "X-n125-k30",
+    "set": "X",
+    "n_customers": 124,
+    "n_vehicles": 30,
+    "capacity": 188,
+    "optimal": 55539
+  },
+  {
+    "name": "X-n129-k18",
+    "set": "X",
+    "n_customers": 128,
+    "n_vehicles": 18,
+    "capacity": 39,
+    "optimal": 28940
+  },
+  {
+    "name": "X-n134-k13",
+    "set": "X",
+    "n_customers": 133,
+    "n_vehicles": 13,
+    "capacity": 643,
+    "optimal": 10916
+  },
+  {
+    "name": "X-n139-k10",
+    "set": "X",
+    "n_customers": 138,
+    "n_vehicles": 10,
+    "capacity": 106,
+    "optimal": 13590
+  },
+  {
+    "name": "X-n143-k7",
+    "set": "X",
+    "n_customers": 142,
+    "n_vehicles": 7,
+    "capacity": 1190,
+    "optimal": 15700
+  },
+  {
+    "name": "X-n148-k46",
+    "set": "X",
+    "n_customers": 147,
+    "n_vehicles": 46,
+    "capacity": 18,
+    "optimal": 43448
+  },
+  {
+    "name": "X-n153-k22",
+    "set": "X",
+    "n_customers": 152,
+    "n_vehicles": 22,
+    "capacity": 144,
+    "optimal": 21220
+  },
+  {
+    "name": "X-n157-k13",
+    "set": "X",
+    "n_customers": 156,
+    "n_vehicles": 13,
+    "capacity": 12,
+    "optimal": 16876
+  },
+  {
+    "name": "X-n162-k11",
+    "set": "X",
+    "n_customers": 161,
+    "n_vehicles": 11,
+    "capacity": 1174,
+    "optimal": 14138
+  },
+  {
+    "name": "X-n167-k10",
+    "set": "X",
+    "n_customers": 166,
+    "n_vehicles": 10,
+    "capacity": 133,
+    "optimal": 20557
+  },
+  {
+    "name": "X-n172-k51",
+    "set": "X",
+    "n_customers": 171,
+    "n_vehicles": 51,
+    "capacity": 161,
+    "optimal": 45607
+  },
+  {
+    "name": "X-n176-k26",
+    "set": "X",
+    "n_customers": 175,
+    "n_vehicles": 26,
+    "capacity": 142,
+    "optimal": 47812
+  },
+  {
+    "name": "X-n181-k23",
+    "set": "X",
+    "n_customers": 180,
+    "n_vehicles": 23,
+    "capacity": 8,
+    "optimal": 25569
+  },
+  {
+    "name": "X-n186-k15",
+    "set": "X",
+    "n_customers": 185,
+    "n_vehicles": 15,
+    "capacity": 974,
+    "optimal": 24145
+  },
+  {
+    "name": "X-n190-k8",
+    "set": "X",
+    "n_customers": 189,
+    "n_vehicles": 8,
+    "capacity": 138,
+    "optimal": 16980
+  },
+  {
+    "name": "X-n195-k51",
+    "set": "X",
+    "n_customers": 194,
+    "n_vehicles": 51,
+    "capacity": 181,
+    "optimal": 44225
+  },
+  {
+    "name": "X-n200-k36",
+    "set": "X",
+    "n_customers": 199,
+    "n_vehicles": 36,
+    "capacity": 402,
+    "optimal": 58578
+  }
+]
