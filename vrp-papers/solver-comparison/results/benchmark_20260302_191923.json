@@ -1,0 +1,73 @@
+{
+  "header": {
+    "tool": "BCP-Lap Solver Comparison Benchmark",
+    "gurobi_version": "13.0.0",
+    "copt_version": "8.0.3",
+    "cpu": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+    "os": "Windows 11",
+    "python": "3.12.0",
+    "threads": 1,
+    "rounds": 3,
+    "timestamp": "2026-03-02T19:19:20",
+    "base_instance": "P-n16-k8",
+    "n_customers": 15,
+    "n_columns": 412,
+    "root_lp": 441.0
+  },
+  "rounds": [
+    {
+      "round": 1,
+      "e2e": [
+        {
+          "instance": "P-n16-k8",
+          "n": 15,
+          "optimal": 435,
+          "grb_lp": 441.0,
+          "grb_t": 0.011986900004558265,
+          "grb_cg": 2,
+          "grb_cols": 412,
+          "copt_lp": 441.0,
+          "copt_t": 0.014858500042464584,
+          "copt_cg": 2,
+          "copt_cols": 412
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "e2e": [
+        {
+          "instance": "P-n16-k8",
+          "n": 15,
+          "optimal": 435,
+          "grb_lp": 441.0,
+          "grb_t": 0.012219900032505393,
+          "grb_cg": 2,
+          "grb_cols": 412,
+          "copt_lp": 441.0,
+          "copt_t": 0.013996299996506423,
+          "copt_cg": 2,
+          "copt_cols": 412
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "e2e": [
+        {
+          "instance": "P-n16-k8",
+          "n": 15,
+          "optimal": 435,
+          "grb_lp": 441.0,
+          "grb_t": 0.06028789997799322,
+          "grb_cg": 2,
+          "grb_cols": 412,
+          "copt_lp": 441.0,
+          "copt_t": 0.053618400008417666,
+          "copt_cg": 2,
+          "copt_cols": 412
+        }
+      ]
+    }
+  ]
+}
