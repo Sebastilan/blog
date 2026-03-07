@@ -1,0 +1,107 @@
+[
+  {
+    "file": "an32k5_initial.json",
+    "name": "an32k5_initial",
+    "n": 31,
+    "rc": -1536.0,
+    "method": "mip (time_limit)"
+  },
+  {
+    "file": "an32k5_perturbed.json",
+    "name": "an32k5_perturbed",
+    "n": 31,
+    "rc": -1140.56,
+    "method": "mip (time_limit)"
+  },
+  {
+    "file": "en13k4_converged.json",
+    "name": "en13k4_converged",
+    "n": 12,
+    "rc": 0.0,
+    "method": "enumerate+mip"
+  },
+  {
+    "file": "en13k4_iter1.json",
+    "name": "en13k4_iter1",
+    "n": 12,
+    "rc": -240.0,
+    "method": "enumerate"
+  },
+  {
+    "file": "en13k4_iter2.json",
+    "name": "en13k4_iter2",
+    "n": 12,
+    "rc": -64.0,
+    "method": "enumerate+mip"
+  },
+  {
+    "file": "pn16k8_converged.json",
+    "name": "pn16k8_converged",
+    "n": 15,
+    "rc": 0.0,
+    "method": "enumerate+mip"
+  },
+  {
+    "file": "pn16k8_iter1.json",
+    "name": "pn16k8_iter1",
+    "n": 15,
+    "rc": -131.0,
+    "method": "enumerate+mip"
+  },
+  {
+    "file": "pn19k2_initial.json",
+    "name": "pn19k2_initial",
+    "n": 18,
+    "rc": -545.0,
+    "method": "mip (time_limit)"
+  },
+  {
+    "file": "pn19k2_perturbed.json",
+    "name": "pn19k2_perturbed",
+    "n": 18,
+    "rc": -364.5,
+    "method": "mip (time_limit)"
+  },
+  {
+    "file": "pn22k2_initial.json",
+    "name": "pn22k2_initial",
+    "n": 21,
+    "rc": -638.0,
+    "method": "mip (time_limit)"
+  },
+  {
+    "file": "pn22k2_perturbed.json",
+    "name": "pn22k2_perturbed",
+    "n": 21,
+    "rc": -409.95,
+    "method": "mip (time_limit)"
+  },
+  {
+    "file": "small8_random.json",
+    "name": "small8_random",
+    "n": 8,
+    "rc": -0.06,
+    "method": "enumerate+mip"
+  },
+  {
+    "file": "tiny3_converged.json",
+    "name": "tiny3_converged",
+    "n": 3,
+    "rc": 0.0,
+    "method": "enumerate+mip"
+  },
+  {
+    "file": "tiny3_initial.json",
+    "name": "tiny3_initial",
+    "n": 3,
+    "rc": -4.0,
+    "method": "enumerate+mip"
+  },
+  {
+    "file": "tiny5_random.json",
+    "name": "tiny5_random",
+    "n": 5,
+    "rc": -4.34,
+    "method": "enumerate+mip"
+  }
+]

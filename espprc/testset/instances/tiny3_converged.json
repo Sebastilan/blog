@@ -1,0 +1,54 @@
+{
+  "name": "tiny3_converged",
+  "source": "T3 hand-crafted, CG converged duals",
+  "n_customers": 3,
+  "dist": [
+    [
+      0,
+      3,
+      4,
+      5
+    ],
+    [
+      3,
+      0,
+      5,
+      4
+    ],
+    [
+      4,
+      5,
+      0,
+      3
+    ],
+    [
+      5,
+      4,
+      3,
+      0
+    ]
+  ],
+  "demand": [
+    0,
+    2,
+    3,
+    2
+  ],
+  "capacity": 4,
+  "cover_duals": [
+    6.0,
+    8.0,
+    6.0
+  ],
+  "oracle": {
+    "optimal_rc": 0.0,
+    "optimal_path": [
+      0,
+      1,
+      0
+    ],
+    "optimal_cost": 6,
+    "neg_rc_count": 0,
+    "method": "enumerate+mip"
+  }
+}
